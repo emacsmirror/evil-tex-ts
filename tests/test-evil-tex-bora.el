@@ -151,12 +151,11 @@ Automatically skips test if tree-sitter with LaTeX parser is not available."
       ;; outer should span whole environment
       (should (= (nth 0 bounds) 1))
       (should (= (nth 1 bounds) (point-max)))
-      ;; inner includes content line with trailing newline for clean 'die' behavior
-      ;; With evil-tex-bora-select-newlines-with-envs=t:
-      ;;   inner-beg skips "\n" after \begin{equation} (starts at beginning of content line)
-      ;;   inner-end is at beginning of \end line (includes trailing newline of content)
+      ;; With evil-tex-bora-select-newlines-with-envs=t (default):
+      ;;   inner-beg is on the content line
+      ;;   inner-end includes the newline before \end{equation}
       ;; Note: \begin{equation} is 16 chars, so position 17 is \n, position 18 is 'x'
-      (should (= (nth 2 bounds) 18))  ; after "\n", at start of content line
+      (should (= (nth 2 bounds) 18))  ; at 'x'
       (should (= (nth 3 bounds) 24))  ; at start of \end line
       (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "x = 1\n")))))
 
@@ -514,24 +513,20 @@ so we test simple \\sqrt{x} instead."
 ;;; The inner selection should NOT include \begin{align*} or the \ before \end
 
 (ert-deftest test-user-issue-align-star-inner ()
-  "Test align* environment - inner includes full content line for clean 'die'.
+  "Test align* environment - inner includes the newline before \\end.
 With `evil-tex-bora-select-newlines-with-envs' enabled (default),
-inner selection includes the entire content line (with indentation)
-and trailing newline, so 'die' leaves a clean environment without empty lines."
+inner selection includes the newline before \\end, so `die' deletes the full
+inner block (no blank line remains)."
   (evil-tex-bora-test-with-latex
       "    \\begin{align*}\n      x > 0\n    \\end{align*}" 30  ; cursor on '0'
     (let ((bounds (evil-tex-bora--bounds-of-environment)))
       (should bounds)
-      ;; Inner should include the full content line with indentation and trailing newline
-      ;; This ensures 'die' produces:
-      ;;   \begin{align*}
-      ;;   \end{align*}
-      ;; instead of leaving an empty line
-      (should (= (nth 2 bounds) 20))  ; after "\n" (start of content line with indentation)
-      (should (= (nth 3 bounds) 32))  ; at start of \end line
-      ;; Verify inner text includes indentation and trailing newline
+      ;; Inner starts at the indentation level of the \end line and ends at the
+      ;; same indentation level on the \end line (so `die' doesn't land in column 0).
+      (should (= (nth 2 bounds) 24))  ; 4 spaces into the content line
+      (should (= (nth 3 bounds) 36))  ; at the backslash of \end line
       (let ((inner-text (buffer-substring (nth 2 bounds) (nth 3 bounds))))
-        (should (string= inner-text "      x > 0\n"))))))
+        (should (string= inner-text "  x > 0\n    "))))))
 
 (ert-deftest test-user-issue-align-star-outer-with-newline ()
   "Test that outer environment includes trailing newline for clean deletion."
@@ -542,6 +537,53 @@ and trailing newline, so 'die' leaves a clean environment without empty lines."
       ;; Outer should include trailing newline
       (let ((outer-text (buffer-substring (nth 0 bounds) (nth 1 bounds))))
         (should (string-match-p "\\\\end{align\\*}\n$" outer-text))))))
+
+(ert-deftest test-user-issue-die-preserves-backslash ()
+  "Test that 'die' (delete inner environment) preserves \\end{...} intact.
+This test simulates the exact user scenario where after 'die' the
+backslash before \\end should NOT be deleted."
+  (evil-tex-bora-test-with-latex
+      "    \\begin{align*}\n      x > 0\n    \\end{align*}" 30  ; cursor on '0'
+    (let* ((bounds (evil-tex-bora--bounds-of-environment))
+           (inner-beg (nth 2 bounds))
+           (inner-end (nth 3 bounds)))
+      ;; Simulate 'die' operation
+      (delete-region inner-beg inner-end)
+      ;; Verify \end{align*} is fully preserved (including backslash)
+      (should (string-match-p "\\\\end{align\\*}" (buffer-string)))
+      ;; Verify the result has no blank line between begin/end.
+      (should (string= (buffer-string)
+                       "    \\begin{align*}\n    \\end{align*}")))))
+
+(ert-deftest test-user-issue-die-no-indent-before-end ()
+  "Test 'die' when there's no indentation before \\end."
+  (evil-tex-bora-test-with-latex
+      "\\begin{align*}\n  x > 0\n\\end{align*}" 19  ; cursor on content
+    (let* ((bounds (evil-tex-bora--bounds-of-environment))
+           (inner-beg (nth 2 bounds))
+           (inner-end (nth 3 bounds)))
+      ;; Simulate 'die' operation
+      (delete-region inner-beg inner-end)
+      ;; Verify \end{align*} is fully preserved
+      (should (string-match-p "\\\\end{align\\*}" (buffer-string)))
+      ;; Result should not leave a blank line.
+      (should (string= (buffer-string)
+                       "\\begin{align*}\n\\end{align*}")))))
+
+(ert-deftest test-user-issue-die-keeps-point-out-of-column-0 ()
+  "Regression: `die` should not land in column 0 for indented environments."
+  (evil-tex-bora-test-with-latex
+      "    \\begin{align*}\n      x > 0\n    \\end{align*}" 1
+    (goto-char (point-min))
+    (search-forward "0") ; point is after '0' (like `x > 0|`)
+    (let* ((bounds (evil-tex-bora--bounds-of-environment))
+           (inner-beg (nth 2 bounds))
+           (inner-end (nth 3 bounds)))
+      (delete-region inner-beg inner-end)
+      (should (string= (buffer-string) "    \\begin{align*}\n    \\end{align*}"))
+      (should (= (line-number-at-pos) 2))
+      (should (= (current-column) 4))
+      (should (looking-at-p "\\\\end{align\\*}")))))
 
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here

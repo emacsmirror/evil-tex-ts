@@ -103,8 +103,10 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil.
 
 When `evil-tex-bora-select-newlines-with-envs' is non-nil:
 - outer-end extends to include trailing newline (for clean `dae' deletion)
-- inner-beg skips past newline and indentation after \\begin{...}
-- inner-end moves back past indentation and newline before \\end{...}"
+- inner selection includes the newline before \\end{...} (so `die' removes
+  the whole inner block, like Vim's `di)` on multi-line parens)
+- inner selection is anchored to the indentation level of the \\end line,
+  so after `die' point doesn't jump to column 0."
   (when-let* ((node (evil-tex-bora--get-node-at-point))
               (env-node (evil-tex-bora--find-parent-by-type
                          node '("generic_environment" "math_environment"))))
@@ -122,18 +124,45 @@ When `evil-tex-bora-select-newlines-with-envs' is non-nil:
           (goto-char outer-end)
           (when (eq (char-after) ?\n)
             (setq outer-end (1+ outer-end))))
-        ;; Skip only newline after \begin{...} for inner-beg (NOT whitespace)
-        ;; This ensures that 'die' deletes the entire content line including indentation
-        (save-excursion
-          (goto-char inner-beg)
-          (when (eq (char-after) ?\n)
-            (setq inner-beg (1+ inner-beg))))
-        ;; Move inner-end to beginning of line with \end{...}
-        ;; This includes the trailing newline of content in the inner region
-        (save-excursion
-          (goto-char inner-end)
-          (when (looking-back "^[ \t]*" (line-beginning-position))
-            (setq inner-end (line-beginning-position)))))
+        (let ((end-command-pos inner-end)
+              end-indent-col
+              content-line-bol
+              content-indent-col
+              start-col)
+          ;; Ensure END-COMMAND-POS points at the backslash of \end{...}
+          ;; even if tree-sitter's `end' node starts at `end' (without the \).
+          (save-excursion
+            (goto-char end-command-pos)
+            (when (and (> end-command-pos (point-min))
+                       (eq (char-before) ?\\))
+              (setq end-command-pos (1- end-command-pos))))
+          (setq inner-end end-command-pos)
+          (save-excursion
+            (goto-char end-command-pos)
+            (setq end-indent-col (current-column)))
+          ;; If the environment is multi-line, anchor the inner range start/end
+          ;; to the indentation of the \end line so `die' doesn't land in column 0.
+          (save-excursion
+            (goto-char inner-beg)
+            (when (eq (char-after) ?\n)
+              (setq content-line-bol (1+ (point)))))
+          (when (and content-line-bol end-indent-col)
+            (save-excursion
+              (goto-char content-line-bol)
+              (setq content-indent-col (progn (back-to-indentation) (current-column))))
+            (setq start-col (min end-indent-col content-indent-col))
+            ;; Start inside the indentation on the first content line.
+            (save-excursion
+              (goto-char content-line-bol)
+              (move-to-column start-col)
+              (setq inner-beg (point)))
+            ;; End inside the indentation on the \end line (same column),
+            ;; so the remaining indentation stays correct after deletion.
+            (save-excursion
+              (goto-char end-command-pos)
+              (goto-char (line-beginning-position))
+              (move-to-column start-col)
+              (setq inner-end (point))))))
       (list outer-beg outer-end inner-beg inner-end))))
 
 (defconst evil-tex-bora--command-types
