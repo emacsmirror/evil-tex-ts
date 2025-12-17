@@ -62,7 +62,11 @@
 
 When non-nil:
 - Outer environment (ae) includes trailing newline for clean deletion
-- Inner environment (ie) excludes leading/trailing newlines and indentation
+- Inner environment (ie) includes the newline before \\end{...} and is anchored
+  to the \\end indentation (so `die' removes the whole inner block and doesn't
+  land in column 0)
+- With `cie' on multi-line environments, the inner region becomes linewise so
+  Evil opens a blank line for insertion
 
 This makes `dae' delete the entire environment including its line,
 and `cie' place cursor on a clean line for replacement."
@@ -164,6 +168,37 @@ When `evil-tex-bora-select-newlines-with-envs' is non-nil:
               (move-to-column start-col)
               (setq inner-end (point))))))
       (list outer-beg outer-end inner-beg inner-end))))
+
+(defun evil-tex-bora--change-operator-p ()
+  "Return non-nil when the current Evil operator is a change command."
+  (when (boundp 'evil-this-operator)
+    (let ((op evil-this-operator))
+      (or (eq op 'evil-change)
+          (and (boundp 'evil-change-commands)
+               (memq op evil-change-commands))))))
+
+(defun evil-tex-bora--bounds-of-environment-inner-lines ()
+  "Return linewise inner bounds of environment at point as (BEG . END).
+
+BEG is the beginning of the first line after \\begin{...}.
+END is the beginning of the line containing \\end{...}.
+
+Returns nil for single-line environments or if no environment is found."
+  (when-let* ((node (evil-tex-bora--get-node-at-point))
+              (env-node (evil-tex-bora--find-parent-by-type
+                         node '("generic_environment" "math_environment")))
+              (begin-node (treesit-node-child-by-field-name env-node "begin"))
+              (end-node (treesit-node-child-by-field-name env-node "end")))
+    (let ((begin-end (treesit-node-end begin-node))
+          (end-start (treesit-node-start end-node)))
+      (save-excursion
+        (goto-char begin-end)
+        (when (eq (char-after) ?\n)
+          (forward-char 1)
+          (cons (point)
+                (save-excursion
+                  (goto-char end-start)
+                  (line-beginning-position))))))))
 
 (defconst evil-tex-bora--command-types
   '("generic_command"
@@ -369,17 +404,21 @@ Returns position after delim if found, nil otherwise."
 
 ;;; Evil text objects
 ;;
-;; Text objects return a simple list (BEG END) without explicit type.
-;; This ensures proper behavior in both visual and operator states.
-;; Using evil-range with the passed TYPE causes issues because visual
-;; state passes 'inclusive which includes the end position in selection.
+;; Text objects generally return a simple list (BEG END) to avoid visual-state
+;; off-by-one issues with `inclusive'. Some operators (e.g. `cie' on multi-line
+;; environments) need explicit linewise ranges to match Vim/Evil behavior.
 
 ;; Environment text objects (ie/ae)
 (evil-define-text-object evil-tex-bora-inner-environment (count &optional beg end type)
   "Select inner LaTeX environment."
   :extend-selection nil
   (when-let ((bounds (evil-tex-bora--bounds-of-environment)))
-    (list (nth 2 bounds) (nth 3 bounds))))
+    (if (and evil-tex-bora-select-newlines-with-envs
+             (evil-tex-bora--change-operator-p))
+        (if-let ((line-bounds (evil-tex-bora--bounds-of-environment-inner-lines)))
+            (evil-range (car line-bounds) (cdr line-bounds) 'line)
+          (list (nth 2 bounds) (nth 3 bounds)))
+      (list (nth 2 bounds) (nth 3 bounds)))))
 
 (evil-define-text-object evil-tex-bora-outer-environment (count &optional beg end type)
   "Select outer LaTeX environment."

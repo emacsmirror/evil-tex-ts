@@ -585,5 +585,33 @@ backslash before \\end should NOT be deleted."
       (should (= (current-column) 4))
       (should (looking-at-p "\\\\end{align\\*}")))))
 
+(ert-deftest test-user-issue-cie-uses-linewise-inner-range ()
+  "Regression: `cie` should use a linewise inner range for multi-line environments."
+  (evil-tex-bora-test-with-latex
+      "    \\begin{align*}\n      x > 0\n    \\end{align*}" 30  ; cursor on '0'
+    (let ((had-op (boundp 'evil-this-operator))
+          (old-op (and (boundp 'evil-this-operator) evil-this-operator)))
+      (unwind-protect
+          (progn
+            (setq evil-this-operator 'evil-change)
+            (let* ((range (evil-tex-bora-inner-environment 1))
+                   (beg (nth 0 range))
+                   (end (nth 1 range))
+                   (type (nth 2 range))
+                   (expected-beg (save-excursion
+                                   (goto-char (point-min))
+                                   (search-forward "\\begin{align*}\n")
+                                   (point)))
+                   (expected-end (save-excursion
+                                   (goto-char (point-min))
+                                   (search-forward "\\end{align*}")
+                                   (line-beginning-position))))
+              (should (eq type 'line))
+              (should (= beg expected-beg))
+              (should (= end expected-end))))
+        (if had-op
+            (setq evil-this-operator old-op)
+          (makunbound 'evil-this-operator))))))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here
