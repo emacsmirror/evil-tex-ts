@@ -151,9 +151,13 @@ Automatically skips test if tree-sitter with LaTeX parser is not available."
       ;; outer should span whole environment
       (should (= (nth 0 bounds) 1))
       (should (= (nth 1 bounds) (point-max)))
-      ;; inner should be content between begin and end
-      (should (= (nth 2 bounds) 17))
-      (should (= (nth 3 bounds) 24)))))
+      ;; inner should be content only (excluding newlines/whitespace when option enabled)
+      ;; With evil-tex-bora-select-newlines-with-envs=t:
+      ;;   inner-beg skips "\n" after \begin{equation}
+      ;;   inner-end moves back before "\n" before \end
+      (should (= (nth 2 bounds) 18))  ; after "\n"
+      (should (= (nth 3 bounds) 23))  ; before "\n" before \end
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "x = 1")))))
 
 (ert-deftest test-environment-generic ()
   "Test generic environment like document."
@@ -509,33 +513,30 @@ so we test simple \\sqrt{x} instead."
 ;;; The inner selection should NOT include \begin{align*} or the \ before \end
 
 (ert-deftest test-user-issue-align-star-inner ()
-  "Test align* environment - inner should not include \\begin or \\ before \\end.
-User reported that vie selects \\begin{align*} and the \\ before end."
+  "Test align* environment - inner should select only content, not delimiters.
+With `evil-tex-bora-select-newlines-with-envs' enabled (default),
+inner selection skips leading newline/whitespace after \\begin and
+trailing whitespace/newline before \\end."
   (evil-tex-bora-test-with-latex
       "    \\begin{align*}\n      x > 0\n    \\end{align*}" 31  ; cursor after 'x > 0'
     (let ((bounds (evil-tex-bora--bounds-of-environment)))
       (should bounds)
-      ;; Inner should NOT start at \begin - it should start after }
-      (should (= (nth 2 bounds) 19))  ; position after \begin{align*}
-      ;; Inner should NOT include the \ before \end
-      (should (= (nth 3 bounds) 36))  ; position of \ in \end
-      ;; Verify inner text does not contain \begin or \end
+      ;; Inner should be just "x > 0" - skipping newlines and indentation
+      (should (= (nth 2 bounds) 26))  ; position of 'x'
+      (should (= (nth 3 bounds) 31))  ; position after '0'
+      ;; Verify inner text is exactly the content
       (let ((inner-text (buffer-substring (nth 2 bounds) (nth 3 bounds))))
-        (should (not (string-match-p "\\\\begin" inner-text)))
-        (should (not (string-match-p "\\\\end" inner-text)))
-        ;; But should contain the actual content
-        (should (string-match-p "x > 0" inner-text))))))
+        (should (string= inner-text "x > 0"))))))
 
-(ert-deftest test-user-issue-align-star-boundary-chars ()
-  "Verify exact characters at inner boundaries for align* environment."
+(ert-deftest test-user-issue-align-star-outer-with-newline ()
+  "Test that outer environment includes trailing newline for clean deletion."
   (evil-tex-bora-test-with-latex
-      "    \\begin{align*}\n      x > 0\n    \\end{align*}" 31
+      "text\n\\begin{align*}\n  x > 0\n\\end{align*}\nmore" 20
     (let ((bounds (evil-tex-bora--bounds-of-environment)))
       (should bounds)
-      ;; Character AT inner-end should be \ (first char of \end, NOT selected)
-      (should (= (char-after (nth 3 bounds)) ?\\))
-      ;; Character BEFORE inner-end should be space (last selected char)
-      (should (= (char-after (1- (nth 3 bounds))) ?\s)))))
+      ;; Outer should include trailing newline
+      (let ((outer-text (buffer-substring (nth 0 bounds) (nth 1 bounds))))
+        (should (string-match-p "\\\\end{align\\*}\n$" outer-text))))))
 
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here

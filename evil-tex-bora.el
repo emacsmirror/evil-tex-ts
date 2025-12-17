@@ -57,6 +57,18 @@
   :group 'evil
   :prefix "evil-tex-bora-")
 
+(defcustom evil-tex-bora-select-newlines-with-envs t
+  "Whether to select newlines with environment text objects.
+
+When non-nil:
+- Outer environment (ae) includes trailing newline for clean deletion
+- Inner environment (ie) excludes leading/trailing newlines and indentation
+
+This makes `dae' delete the entire environment including its line,
+and `cie' place cursor on a clean line for replacement."
+  :type 'boolean
+  :group 'evil-tex-bora)
+
 ;;; Tree-sitter utilities
 
 (defun evil-tex-bora--ensure-parser ()
@@ -87,7 +99,12 @@ TYPES is a list of node type strings."
 
 (defun evil-tex-bora--bounds-of-environment ()
   "Return bounds of LaTeX environment at point.
-Returns (outer-beg outer-end inner-beg inner-end) or nil."
+Returns (outer-beg outer-end inner-beg inner-end) or nil.
+
+When `evil-tex-bora-select-newlines-with-envs' is non-nil:
+- outer-end extends to include trailing newline (for clean `dae' deletion)
+- inner-beg skips past newline and indentation after \\begin{...}
+- inner-end moves back past indentation and newline before \\end{...}"
   (when-let* ((node (evil-tex-bora--get-node-at-point))
               (env-node (evil-tex-bora--find-parent-by-type
                          node '("generic_environment" "math_environment"))))
@@ -98,6 +115,25 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
            (end-node (treesit-node-child-by-field-name env-node "end"))
            (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
            (inner-end (if end-node (treesit-node-start end-node) outer-end)))
+      ;; Adjust bounds for newlines if option is enabled
+      (when evil-tex-bora-select-newlines-with-envs
+        ;; Extend outer-end to include trailing newline
+        (save-excursion
+          (goto-char outer-end)
+          (when (eq (char-after) ?\n)
+            (setq outer-end (1+ outer-end))))
+        ;; Skip newline and indentation after \begin{...} for inner-beg
+        (save-excursion
+          (goto-char inner-beg)
+          (when (looking-at "\n[ \t]*")
+            (setq inner-beg (match-end 0))))
+        ;; Move back past indentation and newline before \end{...} for inner-end
+        (save-excursion
+          (goto-char inner-end)
+          (when (looking-back "^[ \t]*" (line-beginning-position))
+            (goto-char (match-beginning 0))
+            (when (eq (char-before) ?\n)
+              (setq inner-end (1- (point)))))))
       (list outer-beg outer-end inner-beg inner-end))))
 
 (defconst evil-tex-bora--command-types
