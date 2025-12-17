@@ -185,14 +185,32 @@ Automatically skips test if tree-sitter with LaTeX parser is not available."
       ;; inner should be empty for commands without args
       (should (= (nth 2 bounds) (nth 3 bounds))))))
 
-(ert-deftest test-command-multi-arg ()
-  "Test command with multiple arguments like \\frac{a}{b}."
-  (evil-tex-bora-test-with-latex "\\frac{a}{b}" 7
+(ert-deftest test-command-multi-arg-first ()
+  "Test command with multiple arguments - cursor in first arg."
+  (evil-tex-bora-test-with-latex "\\frac{a}{b}" 7  ; cursor inside {a}
     (let ((bounds (evil-tex-bora--bounds-of-command)))
       (should bounds)
       (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\frac{a}{b}"))
-      ;; inner should include both args
-      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a}{b")))))
+      ;; inner should be the curly group containing cursor
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a")))))
+
+(ert-deftest test-command-multi-arg-second ()
+  "Test command with multiple arguments - cursor in second arg."
+  (evil-tex-bora-test-with-latex "\\frac{a}{b}" 10  ; cursor inside {b}
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\frac{a}{b}"))
+      ;; inner should be the curly group containing cursor
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "b")))))
+
+(ert-deftest test-command-multi-arg-on-name ()
+  "Test command with multiple arguments - cursor on command name."
+  (evil-tex-bora-test-with-latex "\\frac{a}{b}" 3  ; cursor on 'frac'
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\frac{a}{b}"))
+      ;; inner should be nearest curly group to the right (first one)
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a")))))
 
 (ert-deftest test-command-section ()
   "Test section command."
@@ -363,14 +381,24 @@ Automatically skips test if tree-sitter with LaTeX parser is not available."
       (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\ref{fig:main}")))))
 
 (ert-deftest test-example-command-sqrt ()
-  "Test \\sqrt command.
-Note: tree-sitter-latex parses \\sqrt[3]{x} as separate nodes,
-so we test simple \\sqrt{x} instead."
+  "Test \\sqrt command without optional argument."
   (evil-tex-bora-test-with-latex "\\sqrt{x}" 5
     (let ((bounds (evil-tex-bora--bounds-of-command)))
       (should bounds)
       (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\sqrt{x}"))
       (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "x")))))
+
+(ert-deftest test-example-command-sqrt-with-optional ()
+  "Test \\sqrt command with optional argument \\sqrt[n]{x}.
+Tree-sitter-latex doesn't recognize this as a single command node,
+so we use fallback search to find the command boundaries."
+  (evil-tex-bora-test-with-latex "\\sqrt[n + 1]{content}" 15
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      ;; outer should include the whole command with optional arg
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\sqrt[n + 1]{content}"))
+      ;; inner should be only the content inside curly braces (not the optional arg)
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "content")))))
 
 ;;; Math examples (im/am)
 ;;; From examples.md:
