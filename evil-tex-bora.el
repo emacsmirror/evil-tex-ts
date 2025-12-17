@@ -73,6 +73,33 @@ and `cie' place cursor on a clean line for replacement."
   :type 'boolean
   :group 'evil-tex-bora)
 
+(defcustom evil-tex-bora-toggle-override-m t
+  "Whether to bind toggle commands to `mt' prefix.
+When non-nil, toggles are bound to mte, mtm, mtd, mtc.
+This overrides the `m' key (set-marker) for the `t' character.
+Set to nil to preserve the original `m' behavior."
+  :type 'boolean
+  :group 'evil-tex-bora)
+
+(defcustom evil-tex-bora-toggle-override-t nil
+  "Whether to bind toggle commands to `ts' prefix instead.
+When non-nil, toggles are bound to tse, tsm, tsd, tsc.
+This overrides the `t' motion (till char) for the `s' character.
+Can be used together with `evil-tex-bora-toggle-override-m'."
+  :type 'boolean
+  :group 'evil-tex-bora)
+
+(defcustom evil-tex-bora-preferred-inline-math 'dollar
+  "Preferred inline math format for `evil-tex-bora-toggle-math-mode'.
+When toggling from display math \\[...\\] back to inline, this
+determines which format to use.
+
+- `dollar': Use $...$ (default, shorter)
+- `paren': Use \\(...\\) (LaTeX2e recommended)"
+  :type '(choice (const :tag "$...$" dollar)
+                 (const :tag "\\(...\\)" paren))
+  :group 'evil-tex-bora)
+
 ;;; Tree-sitter utilities
 
 (defun evil-tex-bora--ensure-parser ()
@@ -691,16 +718,16 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
   (let ((orig-point (point))
         left-pos right-pos)
     (save-excursion
-      ;; Search backward for left delimiter
+      ;; Search backward for left delimiter (include current position)
       (when (evil-tex-bora--search-backward-delimiter left)
         (setq left-pos (point))
         ;; Search forward for matching right delimiter
         (goto-char orig-point)
         (when (evil-tex-bora--search-forward-delimiter right)
           (setq right-pos (point))
-          ;; Verify this is a valid pair (left before right, both surround point)
+          ;; Verify this is a valid pair (left at or before point, right after point)
           (when (and left-pos right-pos
-                     (< left-pos orig-point)
+                     (<= left-pos orig-point)
                      (> right-pos orig-point))
             (list left-pos right-pos
                   (+ left-pos (length left))
@@ -708,21 +735,44 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
 
 (defun evil-tex-bora--search-backward-delimiter (delim)
   "Search backward for DELIM, handling nesting.
-Returns position if found, nil otherwise."
+Returns position if found, nil otherwise.
+Skips delimiters that are part of \\( \\) \\[ \\] sequences.
+Also checks if delimiter is at current position."
   (let ((depth 1)
-        (regexp (regexp-quote delim)))
+        (regexp (regexp-quote delim))
+        (delim-len (length delim)))
+    ;; First check if delimiter is at current position
+    (when (and (>= (point-max) (+ (point) delim-len))
+               (string= (buffer-substring-no-properties (point) (+ (point) delim-len)) delim)
+               (not (and (= delim-len 1)
+                         (member delim '("(" ")" "[" "]"))
+                         (eq (char-before) ?\\))))
+      (setq depth 0))
+    ;; Then search backward
     (while (and (> depth 0)
                 (re-search-backward regexp nil t))
-      (setq depth (1- depth)))
+      ;; Skip if this is part of \( \) \[ \]
+      (unless (and (= delim-len 1)
+                   (member delim '("(" ")" "[" "]"))
+                   (eq (char-before) ?\\))
+        (setq depth (1- depth))))
     (when (= depth 0)
       (point))))
 
 (defun evil-tex-bora--search-forward-delimiter (delim)
   "Search forward for DELIM.
-Returns position after delim if found, nil otherwise."
-  (let ((regexp (regexp-quote delim)))
-    (when (re-search-forward regexp nil t)
-      (point))))
+Returns position after delim if found, nil otherwise.
+Skips delimiters that are part of \\( \\) \\[ \\] sequences."
+  (let ((regexp (regexp-quote delim))
+        (found nil))
+    (while (and (not found)
+                (re-search-forward regexp nil t))
+      ;; Skip if this is part of \( \) \[ \]
+      (unless (and (= (length delim) 1)
+                   (member delim '("(" ")" "[" "]"))
+                   (eq (char-before (match-beginning 0)) ?\\))
+        (setq found (point))))
+    found))
 
 ;;; Evil text objects
 ;;
@@ -802,42 +852,160 @@ Returns position after delim if found, nil otherwise."
 ;;; Toggles
 
 (defun evil-tex-bora-toggle-env-asterisk ()
-  "Toggle asterisk on current environment (e.g., equation <-> equation*)."
+  "Toggle asterisk on current environment (e.g., equation <-> equation*).
+Toggles the asterisk in both \\begin{env} and \\end{env}."
   (interactive)
-  ;; TODO: Implement
-  (message "evil-tex-bora-toggle-env-asterisk: Not implemented yet"))
+  (when-let* ((bounds (evil-tex-bora--bounds-of-environment))
+              (outer-beg (nth 0 bounds))
+              (outer-end (nth 1 bounds)))
+    (save-excursion
+      ;; Toggle asterisk in \end{...}
+      (goto-char outer-beg)
+      (when (re-search-forward "\\\\end{[^}*]+" outer-end t)
+        (if (eq ?* (char-after))
+            (delete-char 1)
+          (insert "*")))
+      ;; Toggle asterisk in \begin{...}
+      (goto-char outer-beg)
+      (when (re-search-forward "\\\\begin{[^}*]+" outer-end t)
+        (if (eq ?* (char-after))
+            (delete-char 1)
+          (insert "*"))))))
 
 (defun evil-tex-bora-toggle-math-mode ()
-  "Toggle math mode between inline and display (\\(...\\) <-> \\[...\\])."
+  "Toggle math mode between inline and display.
+Supports $...$, \\(...\\), and \\[...\\].
+
+Inline to display:
+  $...$     -> \\[...\\]
+  \\(...\\) -> \\[...\\]
+
+Display to inline (based on `evil-tex-bora-preferred-inline-math'):
+  \\[...\\] -> $...$ (if `dollar')
+  \\[...\\] -> \\(...\\) (if `paren')"
   (interactive)
-  ;; TODO: Implement
-  (message "evil-tex-bora-toggle-math-mode: Not implemented yet"))
+  (when-let* ((bounds (evil-tex-bora--bounds-of-math))
+              (outer-beg (nth 0 bounds))
+              (inner-beg (nth 2 bounds))
+              (inner-end (nth 3 bounds))
+              (outer-end (nth 1 bounds)))
+    (let ((left-delim (buffer-substring-no-properties outer-beg inner-beg))
+          (right-delim (buffer-substring-no-properties inner-end outer-end)))
+      (save-excursion
+        (cond
+         ;; $...$ -> \[...\]
+         ((and (string= left-delim "$") (string= right-delim "$"))
+          (goto-char inner-end)
+          (delete-char 1)
+          (insert "\\]")
+          (goto-char outer-beg)
+          (delete-char 1)
+          (insert "\\["))
+         ;; \(...\) -> \[...\]
+         ((and (string= left-delim "\\(") (string= right-delim "\\)"))
+          (goto-char inner-end)
+          (delete-char 2)
+          (insert "\\]")
+          (goto-char outer-beg)
+          (delete-char 2)
+          (insert "\\["))
+         ;; \[...\] -> inline (based on preference)
+         ((and (string= left-delim "\\[") (string= right-delim "\\]"))
+          (let ((use-dollar (eq evil-tex-bora-preferred-inline-math 'dollar)))
+            (goto-char inner-end)
+            (delete-char 2)
+            (insert (if use-dollar "$" "\\)"))
+            (goto-char outer-beg)
+            (delete-char 2)
+            (insert (if use-dollar "$" "\\(")))))))))
+
+(defconst evil-tex-bora--size-prefix-regexp
+  "\\\\\\(?:left\\|right\\|bigl\\|bigr\\|Bigl\\|Bigr\\|biggl\\|biggr\\|Biggl\\|Biggr\\|bigg\\|Bigg\\|big\\|Big\\)"
+  "Regexp matching sizing prefixes like \\left, \\bigl, etc.
+Note: longer matches (bigl, bigr) must come before shorter ones (big).")
 
 (defun evil-tex-bora-toggle-delim-size ()
-  "Toggle delimiter sizing (() <-> \\left(\\right))."
+  "Toggle delimiter sizing (() <-> \\left(\\right)).
+Also converts \\bigl(\\bigr) etc. to plain () (one-way conversion)."
   (interactive)
-  ;; TODO: Implement
-  (message "evil-tex-bora-toggle-delim-size: Not implemented yet"))
+  (when-let* ((bounds (evil-tex-bora--bounds-of-delimiter))
+              (outer-beg (nth 0 bounds))
+              (inner-beg (nth 2 bounds))
+              (inner-end (nth 3 bounds))
+              (outer-end (nth 1 bounds)))
+    (let ((left-delim (buffer-substring-no-properties outer-beg inner-beg))
+          (right-delim (buffer-substring-no-properties inner-end outer-end)))
+      (save-excursion
+        (cond
+         ;; Has sizing prefix -> remove it
+         ((string-match evil-tex-bora--size-prefix-regexp left-delim)
+          (let ((new-left (replace-regexp-in-string
+                           evil-tex-bora--size-prefix-regexp "" left-delim))
+                (new-right (replace-regexp-in-string
+                            evil-tex-bora--size-prefix-regexp "" right-delim)))
+            (goto-char inner-end)
+            (delete-region inner-end outer-end)
+            (insert new-right)
+            (goto-char outer-beg)
+            (delete-region outer-beg inner-beg)
+            (insert new-left)))
+         ;; No prefix -> add \left \right
+         (t
+          (goto-char inner-end)
+          (delete-region inner-end outer-end)
+          (insert "\\right" right-delim)
+          (goto-char outer-beg)
+          (delete-region outer-beg inner-beg)
+          (insert "\\left" left-delim)))))))
 
 (defun evil-tex-bora-toggle-cmd-asterisk ()
-  "Toggle asterisk on current command (\\section <-> \\section*)."
+  "Toggle asterisk on current command (\\section <-> \\section*).
+The asterisk is placed between the command name and its arguments."
   (interactive)
-  ;; TODO: Implement
-  (message "evil-tex-bora-toggle-cmd-asterisk: Not implemented yet"))
+  (when-let* ((bounds (evil-tex-bora--bounds-of-command))
+              (outer-beg (nth 0 bounds))
+              (inner-beg (nth 2 bounds)))
+    (save-excursion
+      (goto-char outer-beg)
+      ;; Search for position right after the command name (before [] or {})
+      (when (re-search-forward "\\\\[a-zA-Z@]+" inner-beg t)
+        (cond
+         ;; Already has asterisk -> remove it
+         ((eq ?* (char-after))
+          (delete-char 1))
+         ;; No asterisk -> add it
+         (t
+          (insert "*")))))))
 
 ;;; Keymap
 
-(defvar evil-tex-bora-mode-map
+(defvar evil-tex-bora-toggle-map
   (let ((map (make-sparse-keymap)))
-    ;; Text objects are bound in evil's text object maps
-    ;; Toggles use the mt prefix
-    (evil-define-key 'normal map
-      "mte" #'evil-tex-bora-toggle-env-asterisk
-      "mtm" #'evil-tex-bora-toggle-math-mode
-      "mtd" #'evil-tex-bora-toggle-delim-size
-      "mtc" #'evil-tex-bora-toggle-cmd-asterisk)
+    (define-key map "e" #'evil-tex-bora-toggle-env-asterisk)
+    (define-key map "m" #'evil-tex-bora-toggle-math-mode)
+    (define-key map "d" #'evil-tex-bora-toggle-delim-size)
+    (define-key map "c" #'evil-tex-bora-toggle-cmd-asterisk)
     map)
+  "Keymap for evil-tex-bora toggle commands.
+Bound to `mt' or `ts' prefix depending on configuration.")
+
+(defvar evil-tex-bora-mode-map
+  (make-sparse-keymap)
   "Keymap for `evil-tex-bora-mode'.")
+
+(defun evil-tex-bora--setup-toggle-keybindings ()
+  "Setup toggle keybindings based on customization options.
+Call this after changing `evil-tex-bora-toggle-override-m' or
+`evil-tex-bora-toggle-override-t'."
+  (when (boundp 'evil-normal-state-local-map)
+    ;; Bind to mt* if enabled
+    (when evil-tex-bora-toggle-override-m
+      (evil-define-key 'normal evil-tex-bora-mode-map
+        "mt" evil-tex-bora-toggle-map))
+    ;; Bind to ts* if enabled
+    (when evil-tex-bora-toggle-override-t
+      (evil-define-key 'normal evil-tex-bora-mode-map
+        "ts" evil-tex-bora-toggle-map))))
 
 ;;; Minor mode
 
@@ -876,9 +1044,10 @@ These bindings are global but the functions check if evil-tex-bora-mode is activ
     (define-key evil-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
     (define-key evil-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)))
 
-;; Setup text objects when package is loaded (after evil)
+;; Setup text objects and toggle keybindings when package is loaded (after evil)
 (with-eval-after-load 'evil
-  (evil-tex-bora--setup-text-objects))
+  (evil-tex-bora--setup-text-objects)
+  (evil-tex-bora--setup-toggle-keybindings))
 
 ;;;###autoload
 (define-minor-mode evil-tex-bora-mode

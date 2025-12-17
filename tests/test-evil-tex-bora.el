@@ -724,5 +724,137 @@ This ensures cursor lands on first non-whitespace char after deletion."
             (setq evil-this-operator old-op)
           (makunbound 'evil-this-operator))))))
 
+;;; ==========================================================================
+;;; Toggle function tests (Phase 3)
+;;; ==========================================================================
+
+;;; Environment asterisk toggle (mte)
+
+(ert-deftest test-toggle-env-asterisk-add ()
+  "Test adding asterisk to environment: equation -> equation*."
+  (evil-tex-bora-test-with-latex
+      "\\begin{equation}\nx = 1\n\\end{equation}" 20
+    (evil-tex-bora-toggle-env-asterisk)
+    (should (string= (buffer-string)
+                     "\\begin{equation*}\nx = 1\n\\end{equation*}"))))
+
+(ert-deftest test-toggle-env-asterisk-remove ()
+  "Test removing asterisk from environment: equation* -> equation."
+  (evil-tex-bora-test-with-latex
+      "\\begin{equation*}\nx = 1\n\\end{equation*}" 20
+    (evil-tex-bora-toggle-env-asterisk)
+    (should (string= (buffer-string)
+                     "\\begin{equation}\nx = 1\n\\end{equation}"))))
+
+(ert-deftest test-toggle-env-asterisk-align ()
+  "Test toggle asterisk on align environment."
+  (evil-tex-bora-test-with-latex
+      "\\begin{align}\na &= b\n\\end{align}" 20
+    (evil-tex-bora-toggle-env-asterisk)
+    (should (string= (buffer-string)
+                     "\\begin{align*}\na &= b\n\\end{align*}"))))
+
+;;; Math mode toggle (mtm)
+
+(ert-deftest test-toggle-math-mode-inline-to-display ()
+  "Test toggle math: \\(...\\) -> \\[...\\]."
+  (evil-tex-bora-test-with-latex "\\(x + y\\)" 5
+    (evil-tex-bora-toggle-math-mode)
+    (should (string= (buffer-string) "\\[x + y\\]"))))
+
+(ert-deftest test-toggle-math-mode-display-to-inline-dollar ()
+  "Test toggle math: \\[...\\] -> $...$ (default preference)."
+  (evil-tex-bora-test-with-latex "\\[x + y\\]" 5
+    (let ((evil-tex-bora-preferred-inline-math 'dollar))
+      (evil-tex-bora-toggle-math-mode)
+      (should (string= (buffer-string) "$x + y$")))))
+
+(ert-deftest test-toggle-math-mode-display-to-inline-paren ()
+  "Test toggle math: \\[...\\] -> \\(...\\) (paren preference)."
+  (evil-tex-bora-test-with-latex "\\[x + y\\]" 5
+    (let ((evil-tex-bora-preferred-inline-math 'paren))
+      (evil-tex-bora-toggle-math-mode)
+      (should (string= (buffer-string) "\\(x + y\\)")))))
+
+(ert-deftest test-toggle-math-mode-dollar-to-display ()
+  "Test toggle math: $...$ -> \\[...\\]."
+  (evil-tex-bora-test-with-latex "$x + y$" 4
+    (evil-tex-bora-toggle-math-mode)
+    (should (string= (buffer-string) "\\[x + y\\]"))))
+
+(ert-deftest test-toggle-math-mode-dollar-roundtrip ()
+  "Test toggle math roundtrip: $...$ -> \\[...\\] -> $...$."
+  (evil-tex-bora-test-with-latex "$x + y$" 4
+    (let ((evil-tex-bora-preferred-inline-math 'dollar))
+      (evil-tex-bora-toggle-math-mode)
+      (should (string= (buffer-string) "\\[x + y\\]"))
+      (goto-char 4)
+      (evil-tex-bora-toggle-math-mode)
+      (should (string= (buffer-string) "$x + y$")))))
+
+(ert-deftest test-toggle-math-mode-complex-formula ()
+  "Test toggle math with complex formula."
+  (evil-tex-bora-test-with-latex "\\(\\int_0^1 f(x) dx\\)" 10
+    (evil-tex-bora-toggle-math-mode)
+    (should (string= (buffer-string) "\\[\\int_0^1 f(x) dx\\]"))))
+
+;;; Delimiter sizing toggle (mtd)
+
+(ert-deftest test-toggle-delim-size-add-left-right ()
+  "Test toggle delimiter: () -> \\left(\\right)."
+  (evil-tex-bora-test-with-latex "\\((a + b)\\)" 6
+    (evil-tex-bora-toggle-delim-size)
+    (should (string= (buffer-string) "\\(\\left(a + b\\right)\\)"))))
+
+(ert-deftest test-toggle-delim-size-remove-left-right ()
+  "Test toggle delimiter: \\left(\\right) -> ()."
+  (evil-tex-bora-test-with-latex "\\(\\left(a + b\\right)\\)" 10
+    (evil-tex-bora-toggle-delim-size)
+    (should (string= (buffer-string) "\\((a + b)\\)"))))
+
+(ert-deftest test-toggle-delim-size-bigl-to-plain ()
+  "Test toggle delimiter: \\bigl(\\bigr) -> () (one-way)."
+  (evil-tex-bora-test-with-latex "\\(\\bigl(a + b\\bigr)\\)" 10
+    (evil-tex-bora-toggle-delim-size)
+    (should (string= (buffer-string) "\\((a + b)\\)"))))
+
+(ert-deftest test-toggle-delim-size-brackets ()
+  "Test toggle delimiter with brackets: [] -> \\left[\\right]."
+  (evil-tex-bora-test-with-latex "\\([a + b]\\)" 6
+    (evil-tex-bora-toggle-delim-size)
+    (should (string= (buffer-string) "\\(\\left[a + b\\right]\\)"))))
+
+(ert-deftest test-toggle-delim-size-cursor-on-opening ()
+  "Test toggle delimiter with cursor on opening paren."
+  (evil-tex-bora-test-with-latex "\\((a + b)\\)" 3  ; cursor on (
+    (evil-tex-bora-toggle-delim-size)
+    (should (string= (buffer-string) "\\(\\left(a + b\\right)\\)"))))
+
+;;; Command asterisk toggle (mtc)
+
+(ert-deftest test-toggle-cmd-asterisk-add ()
+  "Test adding asterisk to command: \\section -> \\section*."
+  (evil-tex-bora-test-with-latex "\\section{Title}" 10
+    (evil-tex-bora-toggle-cmd-asterisk)
+    (should (string= (buffer-string) "\\section*{Title}"))))
+
+(ert-deftest test-toggle-cmd-asterisk-remove ()
+  "Test removing asterisk from command: \\section* -> \\section."
+  (evil-tex-bora-test-with-latex "\\section*{Title}" 10
+    (evil-tex-bora-toggle-cmd-asterisk)
+    (should (string= (buffer-string) "\\section{Title}"))))
+
+(ert-deftest test-toggle-cmd-asterisk-textbf ()
+  "Test toggle asterisk on \\textbf (unusual but should work)."
+  (evil-tex-bora-test-with-latex "\\textbf{text}" 8
+    (evil-tex-bora-toggle-cmd-asterisk)
+    (should (string= (buffer-string) "\\textbf*{text}"))))
+
+(ert-deftest test-toggle-cmd-asterisk-subsection ()
+  "Test toggle asterisk on \\subsection."
+  (evil-tex-bora-test-with-latex "\\subsection{Intro}" 12
+    (evil-tex-bora-toggle-cmd-asterisk)
+    (should (string= (buffer-string) "\\subsection*{Intro}"))))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here

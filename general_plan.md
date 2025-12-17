@@ -27,12 +27,12 @@ Tree-sitter based LaTeX text objects for Evil mode in Emacs 29+.
    | im/am | math | `inline_formula`, `displayed_equation` |
    | id/ad | delimiter | math delimiters |
 
-3. **Toggles**
+3. **Toggles** (configurable `mt*` or `ts*` prefix)
    | Key | Function |
    |-----|----------|
    | mtd | `()` <-> `\left(\right)` |
    | mte | `env` <-> `env*` |
-   | mtm | `\(...\)` <-> `\[...\]` |
+   | mtm | `$`, `\(...\)` <-> `\[...\]` |
    | mtc | `\cmd` <-> `\cmd*` |
 
 4. **Evil-surround Integration**
@@ -71,19 +71,19 @@ Tree-sitter based LaTeX text objects for Evil mode in Emacs 29+.
 - [x] id/ad (delimiter)
 
 ### Phase 3: Toggles
-- [ ] mte (environment asterisk)
-- [ ] mtm (math mode)
-- [ ] mtd (delimiter sizing)
-- [ ] mtc (command asterisk)
+- [x] mte (environment asterisk)
+- [x] mtm (math mode)
+- [x] mtd (delimiter sizing)
+- [x] mtc (command asterisk)
 
 ### Phase 4: Surround
 - [ ] Evil-surround integration
 - [ ] Prompt keymaps
 
 ### Phase 5: Finalization
-- [ ] Minor mode
-- [ ] Keymaps
-- [ ] Tests
+- [x] Minor mode (`evil-tex-bora-mode`)
+- [x] Keymaps (text objects + toggle bindings)
+- [x] Tests (81 tests passing)
 
 ## Reference
 
