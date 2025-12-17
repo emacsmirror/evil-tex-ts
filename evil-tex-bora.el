@@ -99,6 +99,12 @@ TYPES is a list of node type strings."
     (cons (treesit-node-start node)
           (treesit-node-end node))))
 
+(defun evil-tex-bora--node-contains-point-p (node pt)
+  "Return non-nil when NODE contains PT.
+
+Tree-sitter node ranges are half-open: [start, end)."
+  (and node (>= pt (treesit-node-start node)) (< pt (treesit-node-end node))))
+
 ;;; Text object helpers
 
 (defun evil-tex-bora--bounds-of-environment ()
@@ -237,10 +243,49 @@ For example with cursor at |:
   \\fr|ac{a}{b}   -> inner is \"a\" (nearest to the right)
   \\sqrt[n]{x|}   -> inner is \"x\"
   \\alpha|        -> inner is empty"
+  ;; Ensure we have a parser
+  (unless (treesit-parser-list)
+    (when (evil-tex-bora--ensure-parser)
+      (treesit-parser-create 'latex)))
   ;; Try fallback first - it handles cases like \sqrt[n]{x} where
   ;; tree-sitter doesn't recognize the curly group as part of the command
   (or (evil-tex-bora--bounds-of-command-fallback)
       (evil-tex-bora--bounds-of-command-tree-sitter)))
+
+(defun evil-tex-bora--command-curly-args (cmd-node)
+  "Return command curly arguments info for CMD-NODE.
+
+Returns (OUTER-END . CURLY-NODES), where OUTER-END may be extended to include
+trailing optional [...] and curly {...} arguments that are not part of the
+tree-sitter command node."
+  (let ((outer-end (treesit-node-end cmd-node))
+        (curly-nodes (evil-tex-bora--collect-command-curly-args cmd-node)))
+    (when (null curly-nodes)
+      (when-let ((extended (evil-tex-bora--extend-command-bounds cmd-node)))
+        (setq outer-end (nth 0 extended))
+        (setq curly-nodes (nth 1 extended))))
+    (cons outer-end curly-nodes)))
+
+(defun evil-tex-bora--nearest-ancestor-command-with-curly-arg (cmd-node pt)
+  "Return nearest ancestor command of CMD-NODE whose curly arg contains PT.
+
+This is used to prefer the surrounding command when point is on an inner
+no-argument command (e.g. \\cdot) inside another command's {...} argument."
+  (let ((parent (treesit-node-parent cmd-node))
+        (found nil))
+    (while (and parent (not found))
+      (when (member (treesit-node-type parent) evil-tex-bora--command-types)
+        (let* ((arg-info (evil-tex-bora--command-curly-args parent))
+               (curly-nodes (cdr arg-info))
+               (contains-point nil))
+          (when curly-nodes
+            (dolist (curly-node curly-nodes)
+              (when (evil-tex-bora--node-contains-point-p curly-node pt)
+                (setq contains-point t)))
+            (when contains-point
+              (setq found parent)))))
+      (setq parent (treesit-node-parent parent)))
+    found))
 
 (defun evil-tex-bora--bounds-of-command-tree-sitter ()
   "Return bounds of LaTeX command using tree-sitter nodes.
@@ -269,6 +314,18 @@ We detect this and extend the command bounds to include trailing [...] and {...}
           (when extended
             (setq outer-end (nth 0 extended))
             (setq curly-nodes (nth 1 extended)))))
+      ;; If this is an inner command without args (e.g. \\cdot) and point is
+      ;; inside an ancestor command's curly argument, prefer that ancestor.
+      ;; This matches the expected `vic` behavior for cases like:
+      ;;   \\sqrt{a_1 \\cdot a_2|}  -> selects "a_1 \\cdot a_2"
+      (when (null curly-nodes)
+        (when-let ((ancestor (evil-tex-bora--nearest-ancestor-command-with-curly-arg
+                              cmd-node pt)))
+          (setq cmd-node ancestor)
+          (setq outer-beg (treesit-node-start cmd-node))
+          (let ((arg-info (evil-tex-bora--command-curly-args cmd-node)))
+            (setq outer-end (car arg-info))
+            (setq curly-nodes (cdr arg-info)))))
       (let* ((target-curly (evil-tex-bora--find-target-curly-group curly-nodes pt))
              (inner-beg (if target-curly
                             (1+ (treesit-node-start target-curly))
@@ -366,13 +423,14 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
       (let ((curly-node (evil-tex-bora--find-parent-by-type
                          node '("curly_group"))))
         (if curly-node
-            ;; Check if this curly_group is "orphan" (not part of a command)
-            (let ((parent (treesit-node-parent curly-node)))
-              (when (and parent
-                         (member (treesit-node-type parent)
-                                 '("source_file" "text" "curly_group"
-                                   "inline_formula" "displayed_equation")))
-                ;; This curly_group is not part of a recognized command
+            ;; Check if this curly_group is "orphan" (not part of a recognized
+            ;; command node). For example, tree-sitter-latex often parses
+            ;; \sqrt[n]{x} as separate siblings (\sqrt, [...], {...}), so when
+            ;; point is inside {...} there is no command node ancestor.
+            (let ((enclosing-command
+                   (evil-tex-bora--find-parent-by-type
+                    curly-node evil-tex-bora--command-types)))
+              (unless enclosing-command
                 ;; Look backward for a command pattern and find all curly groups
                 (evil-tex-bora--find-command-with-curly-fallback curly-node)))
           ;; No curly_group found - maybe cursor is inside [...] argument
@@ -802,20 +860,25 @@ Only active in buffers where `evil-tex-bora-mode' is enabled."
       (setq evil-tex-bora--pending-first-non-blank t))))
 
 (defun evil-tex-bora--setup-text-objects ()
-  "Setup text objects for evil-tex-bora."
-  ;; Environment
-  (evil-define-key '(visual operator) evil-tex-bora-mode-map
-    "ie" #'evil-tex-bora-inner-environment
-    "ae" #'evil-tex-bora-outer-environment
-    ;; Command
-    "ic" #'evil-tex-bora-inner-command
-    "ac" #'evil-tex-bora-outer-command
-    ;; Math
-    "im" #'evil-tex-bora-inner-math
-    "am" #'evil-tex-bora-outer-math
-    ;; Delimiter
-    "id" #'evil-tex-bora-inner-delimiter
-    "ad" #'evil-tex-bora-outer-delimiter))
+  "Setup text objects for evil-tex-bora.
+Binds text objects to Evil's inner/outer text object maps.
+These bindings are global but the functions check if evil-tex-bora-mode is active."
+  (when (and (boundp 'evil-inner-text-objects-map)
+             (boundp 'evil-outer-text-objects-map))
+    ;; Inner text objects (used with 'i' prefix, e.g., vic, vie)
+    (define-key evil-inner-text-objects-map "e" #'evil-tex-bora-inner-environment)
+    (define-key evil-inner-text-objects-map "c" #'evil-tex-bora-inner-command)
+    (define-key evil-inner-text-objects-map "m" #'evil-tex-bora-inner-math)
+    (define-key evil-inner-text-objects-map "d" #'evil-tex-bora-inner-delimiter)
+    ;; Outer text objects (used with 'a' prefix, e.g., vac, vae)
+    (define-key evil-outer-text-objects-map "e" #'evil-tex-bora-outer-environment)
+    (define-key evil-outer-text-objects-map "c" #'evil-tex-bora-outer-command)
+    (define-key evil-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
+    (define-key evil-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)))
+
+;; Setup text objects when package is loaded (after evil)
+(with-eval-after-load 'evil
+  (evil-tex-bora--setup-text-objects))
 
 ;;;###autoload
 (define-minor-mode evil-tex-bora-mode
@@ -826,7 +889,6 @@ Only active in buffers where `evil-tex-bora-mode' is enabled."
       (progn
         (unless (evil-tex-bora--ensure-parser)
           (user-error "Tree-sitter LaTeX parser not available"))
-        (evil-tex-bora--setup-text-objects)
         ;; Ensure treesit parser is created for this buffer
         (treesit-parser-create 'latex)
         ;; Add hook for cursor positioning after linewise delete

@@ -27,6 +27,12 @@
        ,@(cl-loop for (key def) on bindings by #'cddr
                   collect `(define-key ,keymap ,key ,def))))
 
+  ;; Text object maps used by Evil for inner/outer text objects
+  (defvar evil-inner-text-objects-map (make-sparse-keymap)
+    "Stub keymap for inner text objects.")
+  (defvar evil-outer-text-objects-map (make-sparse-keymap)
+    "Stub keymap for outer text objects.")
+
   (provide 'evil))
 
 (provide 'evil-stub)

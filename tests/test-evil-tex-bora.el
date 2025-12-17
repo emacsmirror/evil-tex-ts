@@ -433,6 +433,29 @@ so we use fallback search to find the command boundaries."
       (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds))
                        "a_1 \\cdot a_2")))))
 
+(ert-deftest test-command-sqrt-cursor-in-curly-math-environment ()
+  "Test \\sqrt[n]{x} inside math environment with cursor in {}.
+Regression for tree-sitter-latex parsing where {...} is not a command child."
+  (evil-tex-bora-test-with-latex
+      "\\begin{equation}\\sqrt[n + 1]{a_1 \\cdot a_2}\\end{equation}" 31
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds))
+                       "\\sqrt[n + 1]{a_1 \\cdot a_2}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds))
+                       "a_1 \\cdot a_2")))))
+
+(ert-deftest test-command-no-arg-inside-command-arg ()
+  "Point on a no-arg command inside another command arg selects the outer command.
+Example: \\textbf{a_1 \\cdo|t a_2} -> inner is 'a_1 \\cdot a_2'."
+  (evil-tex-bora-test-with-latex "\\textbf{a_1 \\cdot a_2}" 15
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds))
+                       "\\textbf{a_1 \\cdot a_2}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds))
+                       "a_1 \\cdot a_2")))))
+
 ;;; Math examples (im/am)
 ;;; From examples.md:
 ;;;   \(x^2 + y^2 = z^2\)
