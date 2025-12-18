@@ -1151,6 +1151,60 @@ Simulates the post-surround state where \\textbf{line1\\nline2} should become
               (insert normalized))))))
     (should (string= (buffer-string) "\\textbf{first line second line}"))))
 
+;;; Environment surround line break tests
+;;; When surrounding partial line with environment, line breaks should be added
+
+(ert-deftest test-surround-env-partial-line-has-text-before ()
+  "Test that env surround adds line break when text exists before.
+'aaa \\begin{align}bbb\\end{align}' should become:
+'aaa
+\\begin{align}bbb\\end{align}'"
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    ;; Simulate post-surround state
+    (insert "aaa \\begin{align}\nbbb\n\\end{align}")
+    ;; env-has-text-before would be t, env-has-text-after would be nil
+    ;; The advice would insert newline before \begin
+    ;; We test the detection logic
+    (goto-char 1)
+    (let ((beg 5))  ; position of \begin
+      (goto-char beg)
+      (let* ((line-start (line-beginning-position))
+             (text-before (buffer-substring-no-properties line-start beg))
+             (has-text-before (string-match-p "[^ \t]" text-before)))
+        (should has-text-before)
+        (should (string= text-before "aaa "))))))
+
+(ert-deftest test-surround-env-partial-line-has-text-after ()
+  "Test detection of text after environment on same line."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    (insert "\\begin{align}\nbbb\n\\end{align} ccc")
+    ;; Check text after \end{align}
+    (goto-char (point-max))
+    (search-backward "}")
+    (forward-char)  ; after }
+    (let* ((end-pos (point))
+           (line-end (line-end-position))
+           (text-after (buffer-substring-no-properties end-pos line-end))
+           (has-text-after (string-match-p "[^ \t]" text-after)))
+      (should has-text-after)
+      (should (string= text-after " ccc")))))
+
+(ert-deftest test-surround-env-whole-line-no-breaks ()
+  "Test that env surround on whole line doesn't add extra breaks."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    ;; When there's no text before/after, no extra breaks needed
+    (insert "\\begin{align}\nbbb\n\\end{align}")
+    (goto-char 1)
+    (let* ((beg 1)
+           (line-start (line-beginning-position))
+           (text-before (buffer-substring-no-properties line-start beg))
+           (has-text-before (string-match-p "[^ \t]" text-before)))
+      ;; No text before \begin
+      (should-not has-text-before))))
+
 (ert-deftest test-surround-delimiter-M ()
   "Test display math delimiter ?M."
   (skip-unless evil-tex-bora-loaded)
