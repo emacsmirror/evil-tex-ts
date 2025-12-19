@@ -271,7 +271,9 @@ Returns nil for single-line environments or if no environment is found."
     "package_include" "class_include" "latex_include"
     "biblatex_include" "bibtex_include" "graphics_include"
     "svg_include" "inkscape_include" "verbatim_include"
-    "import_include" "input_include")
+    "import_include" "input_include"
+    ;; Text mode commands (like \text, \textbf, etc. in math)
+    "text_mode")
   "List of tree-sitter node types that represent LaTeX commands.")
 
 (defun evil-tex-bora--bounds-of-command ()

@@ -445,6 +445,18 @@ Regression for tree-sitter-latex parsing where {...} is not a command child."
       (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds))
                        "a_1 \\cdot a_2")))))
 
+(ert-deftest test-command-text-mode-cursor-on-name ()
+  "Test \\text{Hello} in math with cursor on command name.
+\\te|xt{Hello} -> inner is 'Hello'.
+This tests that text_mode commands work with vic."
+  (evil-tex-bora-test-with-latex "\\(\\text{Hello}\\)" 5
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds))
+                       "\\text{Hello}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds))
+                       "Hello")))))
+
 (ert-deftest test-command-no-arg-inside-command-arg ()
   "Point on a no-arg command inside another command arg selects the outer command.
 Example: \\textbf{a_1 \\cdo|t a_2} -> inner is 'a_1 \\cdot a_2'."
