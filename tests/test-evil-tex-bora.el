@@ -2034,5 +2034,116 @@ Cursor on subscript should select subscript."
       (should bounds)
       (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_1")))))
 
+;;; ==========================================================================
+;;; Section text object tests (iS/aS)
+;;; ==========================================================================
+
+(ert-deftest test-bounds-of-section-function-exists ()
+  "Test that bounds-of-section function is defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora--bounds-of-section)))
+
+(ert-deftest test-section-text-objects-exist ()
+  "Test that section text objects are defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora-inner-section))
+  (should (fboundp 'evil-tex-bora-outer-section)))
+
+(ert-deftest test-section-navigation-functions-exist ()
+  "Test that section navigation functions are defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora-go-back-section))
+  (should (fboundp 'evil-tex-bora-go-forward-section)))
+
+(ert-deftest test-section-toggle-function-exists ()
+  "Test that section toggle function is defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora-toggle-section)))
+
+(ert-deftest test-section-simple ()
+  "Test section bounds for simple section."
+  (evil-tex-bora-test-with-latex "\\section{Title}\nContent here" 10
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      ;; outer should be entire section
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds))
+                       "\\section{Title}\nContent here"))
+      ;; inner should be content after title
+      (should (string-match-p "Content here"
+                              (buffer-substring (nth 2 bounds) (nth 3 bounds)))))))
+
+(ert-deftest test-section-with-subsection ()
+  "Test section bounds when section contains subsection."
+  (evil-tex-bora-test-with-latex
+      "\\section{Sec}\nContent\n\\subsection{Sub}\nSubcontent" 10
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      ;; outer should include subsection (tree-sitter includes nested sections)
+      (let ((outer (buffer-substring (nth 0 bounds) (nth 1 bounds))))
+        (should (string-match-p "\\\\section{Sec}" outer))
+        (should (string-match-p "\\\\subsection{Sub}" outer))))))
+
+(ert-deftest test-subsection-bounds ()
+  "Test subsection bounds when cursor is in subsection."
+  (evil-tex-bora-test-with-latex
+      "\\section{Sec}\nContent\n\\subsection{Sub}\nSubcontent" 40
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      ;; Should select the subsection, not the parent section
+      (let ((outer (buffer-substring (nth 0 bounds) (nth 1 bounds))))
+        (should (string-match-p "\\\\subsection{Sub}" outer))
+        (should (string-match-p "Subcontent" outer))))))
+
+(ert-deftest test-section-cursor-on-command ()
+  "Test section bounds when cursor is on \\section command."
+  (evil-tex-bora-test-with-latex "\\section{Title}\nContent" 3
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      (should (= (nth 0 bounds) 1)))))
+
+(ert-deftest test-section-cursor-in-title ()
+  "Test section bounds when cursor is in section title."
+  (evil-tex-bora-test-with-latex "\\section{Title}\nContent" 12
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      (should (= (nth 0 bounds) 1)))))
+
+(ert-deftest test-section-multiple-sections ()
+  "Test that section bounds stop at next section."
+  (evil-tex-bora-test-with-latex
+      "\\section{First}\nContent1\n\\section{Second}\nContent2" 10
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      ;; First section should not include second section
+      (let ((outer (buffer-substring (nth 0 bounds) (nth 1 bounds))))
+        (should (string-match-p "\\\\section{First}" outer))
+        (should (string-match-p "Content1" outer))
+        (should-not (string-match-p "\\\\section{Second}" outer))))))
+
+(ert-deftest test-chapter-bounds ()
+  "Test chapter bounds."
+  (evil-tex-bora-test-with-latex "\\chapter{Ch}\nChapter content" 8
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      (should (string-match-p "\\\\chapter{Ch}"
+                              (buffer-substring (nth 0 bounds) (nth 1 bounds)))))))
+
+(ert-deftest test-paragraph-bounds ()
+  "Test paragraph bounds."
+  (evil-tex-bora-test-with-latex "\\paragraph{Para}\nParagraph content" 10
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      (should (string-match-p "\\\\paragraph{Para}"
+                              (buffer-substring (nth 0 bounds) (nth 1 bounds)))))))
+
+(ert-deftest test-section-types-constant ()
+  "Test that section types constant is defined correctly."
+  (skip-unless evil-tex-bora-loaded)
+  (should (boundp 'evil-tex-bora--section-types))
+  (should (member "section" evil-tex-bora--section-types))
+  (should (member "subsection" evil-tex-bora--section-types))
+  (should (member "chapter" evil-tex-bora--section-types))
+  (should (member "part" evil-tex-bora--section-types)))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here

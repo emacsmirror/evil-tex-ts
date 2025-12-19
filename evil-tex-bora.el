@@ -865,6 +865,92 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
 Returns (outer-beg outer-end inner-beg inner-end) or nil."
   (evil-tex-bora--bounds-of-script "subscript"))
 
+;;; Section text objects
+
+(defconst evil-tex-bora--section-types
+  '("part" "chapter" "section" "subsection" "subsubsection"
+    "paragraph" "subparagraph")
+  "List of LaTeX section node types in hierarchical order (highest first).")
+
+(defun evil-tex-bora--bounds-of-section ()
+  "Return bounds of LaTeX section at point.
+Returns (outer-beg outer-end inner-beg inner-end) or nil.
+
+Sections include: part, chapter, section, subsection, subsubsection,
+paragraph, and subparagraph.
+
+Outer bounds cover the entire section from \\section{...} to the end.
+Inner bounds start after the section title's closing brace."
+  (when-let* ((node (evil-tex-bora--get-node-at-point))
+              (section-node (evil-tex-bora--find-parent-by-type
+                             node evil-tex-bora--section-types)))
+    (let* ((outer-beg (treesit-node-start section-node))
+           (outer-end (treesit-node-end section-node))
+           ;; Find the title curly_group to determine inner-beg
+           (title-node (treesit-node-child-by-field-name section-node "text"))
+           (inner-beg (if title-node
+                          (treesit-node-end title-node)
+                        outer-beg))
+           (inner-end outer-end))
+      ;; Adjust inner-beg to skip newline after title if present
+      (when (and evil-tex-bora-select-newlines-with-envs
+                 (< inner-beg (point-max))
+                 (eq (char-after inner-beg) ?\n))
+        (setq inner-beg (1+ inner-beg)))
+      (list outer-beg outer-end inner-beg inner-end))))
+
+;;; Section navigation
+
+(defun evil-tex-bora-go-back-section (&optional count)
+  "Go back to the closest section heading.
+If COUNT is given, go COUNT sections back."
+  (interactive "p")
+  (setq count (or count 1))
+  (let ((section-regexp "\\\\\\(part\\|chapter\\|sub\\(?:sub\\)?section\\|\\(?:sub\\)?paragraph\\)\\*?{"))
+    (dotimes (_ count)
+      ;; If on a section command, move back first to not find the same one
+      (when (looking-at section-regexp)
+        (backward-char))
+      (re-search-backward section-regexp nil t))))
+
+(defun evil-tex-bora-go-forward-section (&optional count)
+  "Go forward to the closest section heading.
+If COUNT is given, go COUNT sections forward."
+  (interactive "p")
+  (setq count (or count 1))
+  (let ((section-regexp "\\\\\\(part\\|chapter\\|sub\\(?:sub\\)?section\\|\\(?:sub\\)?paragraph\\)\\*?{"))
+    (dotimes (_ count)
+      ;; If on a section command, skip past it first
+      (when (looking-at section-regexp)
+        (forward-char))
+      (re-search-forward section-regexp nil t)
+      ;; Move to the beginning of the match
+      (goto-char (match-beginning 0)))))
+
+;;; Section toggle
+
+(defvar evil-tex-bora-section-name-history nil
+  "History for section name changes with `evil-tex-bora-toggle-section'.")
+
+(defun evil-tex-bora-toggle-section ()
+  "Change the name of the surrounding section.
+Prompts for a new section type (e.g., section -> subsection)."
+  (interactive)
+  (when-let* ((bounds (evil-tex-bora--bounds-of-section))
+              (outer-beg (nth 0 bounds)))
+    (save-excursion
+      (goto-char outer-beg)
+      (when (looking-at "\\\\\\(part\\|chapter\\|sub\\(?:sub\\)?section\\|\\(?:sub\\)?paragraph\\)\\(\\*?\\)")
+        (let* ((old-type (match-string 1))
+               (has-star (match-string 2))
+               (new-type (completing-read
+                          (format "Change \\%s to: \\" old-type)
+                          evil-tex-bora--section-types
+                          nil t nil
+                          'evil-tex-bora-section-name-history
+                          old-type)))
+          (replace-match (concat "\\" new-type has-star) t t))))))
+
 ;;; Evil text objects
 ;;
 ;; Text objects generally return a simple list (BEG END) to avoid visual-state
@@ -976,6 +1062,21 @@ For _b: selects _b
 For _\\bar: selects _\\bar"
   :extend-selection nil
   (when-let ((bounds (evil-tex-bora--bounds-of-subscript)))
+    (list (nth 0 bounds) (nth 1 bounds))))
+
+;; Section text objects (iS/aS)
+(evil-define-text-object evil-tex-bora-inner-section (count &optional beg end type)
+  "Select inner LaTeX section.
+Selects content after the section title to the end of the section."
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-section)))
+    (list (nth 2 bounds) (nth 3 bounds))))
+
+(evil-define-text-object evil-tex-bora-outer-section (count &optional beg end type)
+  "Select outer LaTeX section.
+Selects from \\section{...} to the end of the section."
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-section)))
     (list (nth 0 bounds) (nth 1 bounds))))
 
 ;;; Toggles
@@ -1734,13 +1835,15 @@ Things like 'csm' (change surrounding math) will work after this."
   (define-key evil-tex-bora-inner-text-objects-map "d" #'evil-tex-bora-inner-delimiter)
   (define-key evil-tex-bora-inner-text-objects-map "^" #'evil-tex-bora-inner-superscript)
   (define-key evil-tex-bora-inner-text-objects-map "_" #'evil-tex-bora-inner-subscript)
+  (define-key evil-tex-bora-inner-text-objects-map "S" #'evil-tex-bora-inner-section)
   ;; Outer text objects
   (define-key evil-tex-bora-outer-text-objects-map "e" #'evil-tex-bora-outer-environment)
   (define-key evil-tex-bora-outer-text-objects-map "c" #'evil-tex-bora-outer-command)
   (define-key evil-tex-bora-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
   (define-key evil-tex-bora-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)
   (define-key evil-tex-bora-outer-text-objects-map "^" #'evil-tex-bora-outer-superscript)
-  (define-key evil-tex-bora-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript))
+  (define-key evil-tex-bora-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript)
+  (define-key evil-tex-bora-outer-text-objects-map "S" #'evil-tex-bora-outer-section))
 
 ;; Shorten which-key descriptions
 (with-eval-after-load 'which-key
@@ -1757,6 +1860,7 @@ Things like 'csm' (change surrounding math) will work after this."
     (define-key map "M" #'evil-tex-bora-toggle-math-align)
     (define-key map "d" #'evil-tex-bora-toggle-delim-size)
     (define-key map "c" #'evil-tex-bora-toggle-cmd-asterisk)
+    (define-key map "S" #'evil-tex-bora-toggle-section)
     map)
   "Keymap for evil-tex-bora toggle commands.
 Bound to `mt' or `ts' prefix depending on configuration.")
@@ -1812,18 +1916,31 @@ These bindings are global but the functions check if evil-tex-bora-mode is activ
     (define-key evil-inner-text-objects-map "d" #'evil-tex-bora-inner-delimiter)
     (define-key evil-inner-text-objects-map "^" #'evil-tex-bora-inner-superscript)
     (define-key evil-inner-text-objects-map "_" #'evil-tex-bora-inner-subscript)
+    (define-key evil-inner-text-objects-map "S" #'evil-tex-bora-inner-section)
     ;; Outer text objects (used with 'a' prefix, e.g., vac, vae)
     (define-key evil-outer-text-objects-map "e" #'evil-tex-bora-outer-environment)
     (define-key evil-outer-text-objects-map "c" #'evil-tex-bora-outer-command)
     (define-key evil-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
     (define-key evil-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)
     (define-key evil-outer-text-objects-map "^" #'evil-tex-bora-outer-superscript)
-    (define-key evil-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript)))
+    (define-key evil-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript)
+    (define-key evil-outer-text-objects-map "S" #'evil-tex-bora-outer-section)))
+
+(defun evil-tex-bora--setup-section-navigation ()
+  "Setup section navigation keybindings.
+Binds [[ and ]] for section navigation in normal and visual states."
+  (evil-define-key 'normal evil-tex-bora-mode-map
+    "[[" #'evil-tex-bora-go-back-section
+    "]]" #'evil-tex-bora-go-forward-section)
+  (evil-define-key 'visual evil-tex-bora-mode-map
+    "[[" #'evil-tex-bora-go-back-section
+    "]]" #'evil-tex-bora-go-forward-section))
 
 ;; Setup text objects and toggle keybindings when package is loaded (after evil)
 (with-eval-after-load 'evil
   (evil-tex-bora--setup-text-objects)
-  (evil-tex-bora--setup-toggle-keybindings))
+  (evil-tex-bora--setup-toggle-keybindings)
+  (evil-tex-bora--setup-section-navigation))
 
 ;;;###autoload
 (define-minor-mode evil-tex-bora-mode
