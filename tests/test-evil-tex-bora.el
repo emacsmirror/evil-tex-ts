@@ -1638,5 +1638,108 @@ Simulates the post-surround state where \\textbf{line1\\nline2} should become
   (skip-unless evil-tex-bora-loaded)
   (should (eq ?\; (string-to-char ";"))))
 
+;;; ==========================================================================
+;;; Superscript/subscript surround normalization tests
+;;; ==========================================================================
+
+(ert-deftest test-surround-superscript-post-normalize-multiline ()
+  "Test that superscript surround normalizes multiline content.
+^{line1\\nline2} should become ^{line1 line2}."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    ;; Simulate post-surround state with multiline content (like after S^)
+    (insert "^{line1\nline2}")
+    (goto-char 1)
+    ;; Manually run the normalization logic from the advice
+    (when (search-forward "{" nil t)
+      (let ((inner-beg (point))
+            inner-end)
+        (backward-char)
+        (forward-sexp)
+        (setq inner-end (1- (point)))
+        (let* ((content (buffer-substring-no-properties inner-beg inner-end))
+               (has-newlines (string-match-p "\n" content)))
+          (when has-newlines
+            (let ((normalized (replace-regexp-in-string
+                               "[ \t]*\\(?:\n[ \t]*\\)+" " "
+                               (string-trim content))))
+              (delete-region inner-beg inner-end)
+              (goto-char inner-beg)
+              (insert normalized))))))
+    (should (string= (buffer-string) "^{line1 line2}"))))
+
+(ert-deftest test-surround-subscript-post-normalize-multiline ()
+  "Test that subscript surround normalizes multiline content.
+_{line1\\nline2} should become _{line1 line2}."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    ;; Simulate post-surround state with multiline content (like after S_)
+    (insert "_{line1\nline2}")
+    (goto-char 1)
+    ;; Manually run the normalization logic from the advice
+    (when (search-forward "{" nil t)
+      (let ((inner-beg (point))
+            inner-end)
+        (backward-char)
+        (forward-sexp)
+        (setq inner-end (1- (point)))
+        (let* ((content (buffer-substring-no-properties inner-beg inner-end))
+               (has-newlines (string-match-p "\n" content)))
+          (when has-newlines
+            (let ((normalized (replace-regexp-in-string
+                               "[ \t]*\\(?:\n[ \t]*\\)+" " "
+                               (string-trim content))))
+              (delete-region inner-beg inner-end)
+              (goto-char inner-beg)
+              (insert normalized))))))
+    (should (string= (buffer-string) "_{line1 line2}"))))
+
+(ert-deftest test-surround-superscript-post-normalize-indented ()
+  "Test that superscript surround normalizes indented multiline content.
+^{  a\\n  b} should become ^{a b}."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    (insert "^{  a\n  b}")
+    (goto-char 1)
+    (when (search-forward "{" nil t)
+      (let ((inner-beg (point))
+            inner-end)
+        (backward-char)
+        (forward-sexp)
+        (setq inner-end (1- (point)))
+        (let* ((content (buffer-substring-no-properties inner-beg inner-end))
+               (has-newlines (string-match-p "\n" content)))
+          (when has-newlines
+            (let ((normalized (replace-regexp-in-string
+                               "[ \t]*\\(?:\n[ \t]*\\)+" " "
+                               (string-trim content))))
+              (delete-region inner-beg inner-end)
+              (goto-char inner-beg)
+              (insert normalized))))))
+    (should (string= (buffer-string) "^{a b}"))))
+
+(ert-deftest test-surround-super-subscript-preserves-single-line ()
+  "Test that single-line superscript/subscript content is preserved."
+  (skip-unless evil-tex-bora-loaded)
+  (with-temp-buffer
+    (insert "^{hello world}")
+    (goto-char 1)
+    (when (search-forward "{" nil t)
+      (let ((inner-beg (point))
+            inner-end)
+        (backward-char)
+        (forward-sexp)
+        (setq inner-end (1- (point)))
+        (let* ((content (buffer-substring-no-properties inner-beg inner-end))
+               (has-newlines (string-match-p "\n" content)))
+          (when has-newlines
+            (let ((normalized (replace-regexp-in-string
+                               "[ \t]*\\(?:\n[ \t]*\\)+" " "
+                               (string-trim content))))
+              (delete-region inner-beg inner-end)
+              (goto-char inner-beg)
+              (insert normalized))))))
+    (should (string= (buffer-string) "^{hello world}"))))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here
