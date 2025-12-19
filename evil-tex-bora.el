@@ -1009,6 +1009,67 @@ The asterisk is placed between the command name and its arguments."
          (t
           (insert "*")))))))
 
+(defun evil-tex-bora-toggle-math-align ()
+  "Toggle between display math and align* environment.
+
+\\(...\\), \\=\\[...\\] -> \\begin{align*}...\\end{align*}
+\\begin{align*}...\\end{align*} -> \\=\\[...\\]
+
+Also works with inline math ($...$) converting to align*."
+  (interactive)
+  (when-let* ((node (evil-tex-bora--get-node-at-point))
+              (math-node (evil-tex-bora--find-parent-by-type
+                          node '("inline_formula" "displayed_equation"
+                                 "math_environment"))))
+    (let* ((node-type (treesit-node-type math-node))
+           (outer-beg (treesit-node-start math-node))
+           (outer-end (treesit-node-end math-node)))
+      (cond
+       ;; Inside math_environment (e.g., align*) -> convert to display math
+       ((string= node-type "math_environment")
+        (let* ((begin-node (treesit-node-child-by-field-name math-node "begin"))
+               (end-node (treesit-node-child-by-field-name math-node "end"))
+               (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
+               (inner-end (if end-node (treesit-node-start end-node) outer-end))
+               (content (string-trim (buffer-substring-no-properties inner-beg inner-end))))
+          ;; Delete environment and insert display math (multiline format)
+          (save-excursion
+            (delete-region outer-beg outer-end)
+            (goto-char outer-beg)
+            (insert "\\[\n")
+            (insert content)
+            (insert "\n\\]")
+            (indent-region outer-beg (point)))))
+       ;; Inside inline_formula or displayed_equation -> convert to align*
+       (t
+        (let* ((child-count (treesit-node-child-count math-node))
+               (first-child (treesit-node-child math-node 0))
+               (last-child (treesit-node-child math-node (1- child-count)))
+               (inner-beg (if first-child (treesit-node-end first-child) outer-beg))
+               (inner-end (if last-child (treesit-node-start last-child) outer-end))
+               ;; Trim whitespace from content to avoid duplicate newlines
+               (content (string-trim (buffer-substring-no-properties inner-beg inner-end)))
+               ;; Check if there's non-whitespace before on its line
+               (needs-newline-before
+                (save-excursion
+                  (goto-char outer-beg)
+                  (let ((line-start (line-beginning-position)))
+                    (and (> outer-beg line-start)
+                         (string-match-p "[^ \t]"
+                                         (buffer-substring-no-properties
+                                          line-start outer-beg)))))))
+          ;; Delete old math delimiters and insert align*
+          (save-excursion
+            (delete-region outer-beg outer-end)
+            (goto-char outer-beg)
+            (when needs-newline-before
+              (insert "\n"))
+            (insert "\\begin{align*}\n")
+            (insert content)
+            (insert "\n\\end{align*}")
+            ;; Let Emacs indent the environment
+            (indent-region outer-beg (point)))))))))
+
 ;;; Evil-surround integration
 
 (defun evil-tex-bora--populate-surround-keymap (keymap generator-alist prefix
@@ -1579,6 +1640,7 @@ Things like 'csm' (change surrounding math) will work after this."
   (let ((map (make-sparse-keymap)))
     (define-key map "e" #'evil-tex-bora-toggle-env-asterisk)
     (define-key map "m" #'evil-tex-bora-toggle-math-mode)
+    (define-key map "M" #'evil-tex-bora-toggle-math-align)
     (define-key map "d" #'evil-tex-bora-toggle-delim-size)
     (define-key map "c" #'evil-tex-bora-toggle-cmd-asterisk)
     map)

@@ -113,6 +113,28 @@ The inline format used when converting from display is configurable:
 (setq evil-tex-bora-preferred-inline-math 'paren)
 ```
 
+### Math align (mtM)
+
+Toggle between display math and `align*` environment.
+
+```latex
+% Before: display math
+\[x + y = z\]
+
+% After mtM: align* environment
+\begin{align*}
+x + y = z
+\end{align*}
+```
+
+Also works with inline math:
+```latex
+$x + y$      ->  \begin{align*}x + y\end{align*}
+\(x + y\)    ->  \begin{align*}x + y\end{align*}
+\[x + y\]    ->  \begin{align*}x + y\end{align*}
+\begin{align*}x + y\end{align*}  ->  \[x + y\]
+```
+
 ### Delimiter sizing (mtd)
 
 Toggle automatic delimiter sizing with `\left`/`\right`.

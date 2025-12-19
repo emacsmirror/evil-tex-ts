@@ -814,6 +814,55 @@ This ensures cursor lands on first non-whitespace char after deletion."
       ;; Multiple newlines should collapse to single space
       (should (string= (buffer-string) "$x y$")))))
 
+;;; Math-align toggle (mtM)
+
+(ert-deftest test-toggle-math-align-display-to-align ()
+  "Test toggle: \\[...\\] -> \\begin{align*}...\\end{align*}."
+  (evil-tex-bora-test-with-latex "\\[x + y\\]" 5
+    (evil-tex-bora-toggle-math-align)
+    (should (string-match-p "\\\\begin{align\\*}" (buffer-string)))
+    (should (string-match-p "x \\+ y" (buffer-string)))
+    (should (string-match-p "\\\\end{align\\*}" (buffer-string)))))
+
+(ert-deftest test-toggle-math-align-inline-to-align ()
+  "Test toggle: \\(...\\) -> \\begin{align*}...\\end{align*}."
+  (evil-tex-bora-test-with-latex "\\(x + y\\)" 5
+    (evil-tex-bora-toggle-math-align)
+    (should (string-match-p "\\\\begin{align\\*}" (buffer-string)))
+    (should (string-match-p "x \\+ y" (buffer-string)))
+    (should (string-match-p "\\\\end{align\\*}" (buffer-string)))))
+
+(ert-deftest test-toggle-math-align-dollar-to-align ()
+  "Test toggle: $...$ -> \\begin{align*}...\\end{align*}."
+  (evil-tex-bora-test-with-latex "$x + y$" 4
+    (evil-tex-bora-toggle-math-align)
+    (should (string-match-p "\\\\begin{align\\*}" (buffer-string)))
+    (should (string-match-p "x \\+ y" (buffer-string)))
+    (should (string-match-p "\\\\end{align\\*}" (buffer-string)))))
+
+(ert-deftest test-toggle-math-align-align-to-display ()
+  "Test toggle: \\begin{align*}...\\end{align*} -> \\[...\\]."
+  (evil-tex-bora-test-with-latex "\\begin{align*}\nx + y\n\\end{align*}" 20
+    (evil-tex-bora-toggle-math-align)
+    ;; Result is multiline display math
+    (should (string-match-p "\\\\\\[" (buffer-string)))
+    (should (string-match-p "x \\+ y" (buffer-string)))
+    (should (string-match-p "\\\\\\]" (buffer-string)))))
+
+(ert-deftest test-toggle-math-align-roundtrip ()
+  "Test toggle roundtrip: \\[...\\] -> align* -> \\[...\\]."
+  (evil-tex-bora-test-with-latex "\\[x + y\\]" 5
+    (evil-tex-bora-toggle-math-align)
+    (should (string-match-p "\\\\begin{align\\*}" (buffer-string)))
+    ;; Find a position inside the align* environment
+    (goto-char (point-min))
+    (search-forward "x")
+    (evil-tex-bora-toggle-math-align)
+    ;; Result is multiline display math
+    (should (string-match-p "\\\\\\[" (buffer-string)))
+    (should (string-match-p "x \\+ y" (buffer-string)))
+    (should (string-match-p "\\\\\\]" (buffer-string)))))
+
 ;;; Delimiter sizing toggle (mtd)
 
 (ert-deftest test-toggle-delim-size-add-left-right ()
