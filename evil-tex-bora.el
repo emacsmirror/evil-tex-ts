@@ -1140,21 +1140,23 @@ Returns (NEW-END INDENT-STRING HAD-TRAILING-NEWLINE)."
         (list end indent-string had-trailing-newline)))))
 
 (defun evil-tex-bora--surround-region-advice (orig-fn beg end type char &optional force-new-line)
-  "Advice for `evil-surround-region' to normalize regions for inline math and commands.
-Normalizes the region (trims and collapses newlines) when surrounding with inline math
-or commands. For linewise selections, changes type to `inclusive' to prevent
+  "Advice for `evil-surround-region' to normalize regions for inline math, commands, and accents.
+Normalizes the region (trims and collapses newlines) when surrounding with inline math,
+commands, or CDLaTeX accents. For linewise selections, changes type to `inclusive' to prevent
 evil-surround from adding extra newlines.
 
 For inline math (?m): normalization happens BEFORE surrounding.
 For commands (?c): normalization happens AFTER surrounding (after prompt).
+For CDLaTeX accents (?\\;): normalization happens AFTER surrounding (after prompt).
 For environments (?e): line breaks are added when surrounding partial lines."
   (let (indent-string had-trailing-newline content-length original-col original-line
-        is-inline-math is-command is-env
+        is-inline-math is-command is-env is-cdlatex-accent
         ;; For environment: remember if there's text before/after on the same line
         env-has-text-before env-has-text-after env-indent env-is-linewise)
     (setq is-inline-math (and evil-tex-bora-mode (eq char ?m)))
     (setq is-command (and evil-tex-bora-mode (eq char ?c)))
     (setq is-env (and evil-tex-bora-mode (eq char ?e)))
+    (setq is-cdlatex-accent (and evil-tex-bora-mode (eq char ?\;)))
     ;; For environment: check if surrounding partial line (not linewise)
     (when (and is-env (not (eq type 'line)))
       (save-excursion
@@ -1233,11 +1235,11 @@ For environments (?e): line breaks are added when surrounding partial lines."
           ;; Let Emacs handle indentation for the entire environment
           (when (and env-start env-end)
             (indent-region env-start env-end)))))
-    ;; For commands: normalize AFTER calling orig-fn (after prompt was shown)
-    (when is-command
+    ;; For commands and CDLaTeX accents: normalize AFTER calling orig-fn (after prompt was shown)
+    (when (or is-command is-cdlatex-accent)
       (save-excursion
         (goto-char beg)
-        ;; Find the opening { of the command
+        ;; Find the opening { of the command/accent
         (when (search-forward "{" nil t)
           (let ((inner-beg (point))
                 inner-end)
