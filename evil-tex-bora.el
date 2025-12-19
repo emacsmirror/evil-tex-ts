@@ -1226,14 +1226,18 @@ For environments (?e): line breaks are added when surrounding partial lines."
               (when env-has-text-before
                 (goto-char begin-start)
                 (insert "\n"))))
-          ;; Find \end{...}
-          (goto-char beg)
+          ;; Find \end{...} - search from env-start since beg may be stale after insert
+          (when env-start
+            (goto-char env-start))
           (when (search-forward "\\end{" nil t)
             (search-forward "}" nil t)
             (setq env-end (point))
             ;; For partial line with text-after: add newline after \end{...}
             (when env-has-text-after
-              (insert "\n")))
+              (insert "\n")
+              ;; Indent the line with text-after using the original line's indent
+              (when (and indent (> (length indent) 0))
+                (insert indent))))
           ;; Let Emacs handle indentation for the entire environment
           (when (and env-start env-end)
             (indent-region env-start env-end)))))
