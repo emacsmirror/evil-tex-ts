@@ -795,6 +795,76 @@ Skips delimiters that are part of \\( \\) \\[ \\] sequences."
         (setq found (point))))
     found))
 
+;;; Superscript/Subscript text objects
+
+(defun evil-tex-bora--bounds-of-script-at-node (script-node script-type)
+  "Return bounds for SCRIPT-NODE of SCRIPT-TYPE.
+Helper function that extracts bounds from a known script node."
+  (let* ((outer-beg (treesit-node-start script-node))
+         (outer-end (treesit-node-end script-node))
+         ;; Get the argument (field name is same as script type)
+         (arg-node (treesit-node-child-by-field-name script-node script-type))
+         inner-beg inner-end)
+    (if arg-node
+        (let ((arg-type (treesit-node-type arg-node)))
+          (if (string= arg-type "curly_group")
+              ;; For curly_group: inner is content inside braces
+              (progn
+                (setq inner-beg (1+ (treesit-node-start arg-node)))
+                (setq inner-end (1- (treesit-node-end arg-node))))
+            ;; For letter, command_name, etc.: inner is the whole arg
+            (setq inner-beg (treesit-node-start arg-node))
+            (setq inner-end (treesit-node-end arg-node))))
+      ;; No arg node found, inner equals outer (shouldn't happen)
+      (setq inner-beg outer-beg)
+      (setq inner-end outer-end))
+    (list outer-beg outer-end inner-beg inner-end)))
+
+(defun evil-tex-bora--find-script-forward (script-type)
+  "Search forward for nearest SCRIPT-TYPE and return its bounds.
+SCRIPT-TYPE is either \"superscript\" or \"subscript\".
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (let ((search-char (if (string= script-type "superscript") ?^ ?_)))
+    (save-excursion
+      (when (search-forward (char-to-string search-char) nil t)
+        (backward-char)  ; Move back onto the ^ or _
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (script-node (evil-tex-bora--find-parent-by-type
+                                  node (list script-type))))
+          (evil-tex-bora--bounds-of-script-at-node script-node script-type))))))
+
+(defun evil-tex-bora--bounds-of-script (script-type)
+  "Return bounds of superscript or subscript at or after point.
+SCRIPT-TYPE is either \"superscript\" or \"subscript\".
+Returns (outer-beg outer-end inner-beg inner-end) or nil.
+
+First tries to find a script containing point.
+If not found, searches forward for the nearest script.
+
+Outer bounds cover the entire script (e.g., ^{foo} or ^b or ^\\bar).
+Inner bounds cover the argument:
+- For curly groups {foo}: the content inside braces (foo)
+- For single letters (b): the letter itself
+- For commands (\\bar): the command itself"
+  (or
+   ;; First try: find script containing point
+   (when-let* ((node (evil-tex-bora--get-node-at-point))
+               (script-node (evil-tex-bora--find-parent-by-type
+                             node (list script-type))))
+     (evil-tex-bora--bounds-of-script-at-node script-node script-type))
+   ;; Fallback: search forward for nearest script
+   (evil-tex-bora--find-script-forward script-type)))
+
+(defun evil-tex-bora--bounds-of-superscript ()
+  "Return bounds of superscript at point.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (evil-tex-bora--bounds-of-script "superscript"))
+
+(defun evil-tex-bora--bounds-of-subscript ()
+  "Return bounds of subscript at point.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (evil-tex-bora--bounds-of-script "subscript"))
+
 ;;; Evil text objects
 ;;
 ;; Text objects generally return a simple list (BEG END) to avoid visual-state
@@ -868,6 +938,44 @@ Skips delimiters that are part of \\( \\) \\[ \\] sequences."
   "Select outer delimiter."
   :extend-selection nil
   (when-let ((bounds (evil-tex-bora--bounds-of-delimiter)))
+    (list (nth 0 bounds) (nth 1 bounds))))
+
+;; Superscript text objects (i^/a^)
+(evil-define-text-object evil-tex-bora-inner-superscript (count &optional beg end type)
+  "Select inner superscript.
+For ^{foo}: selects foo
+For ^b: selects b
+For ^\\bar: selects \\bar"
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-superscript)))
+    (list (nth 2 bounds) (nth 3 bounds))))
+
+(evil-define-text-object evil-tex-bora-outer-superscript (count &optional beg end type)
+  "Select outer superscript.
+For ^{foo}: selects ^{foo}
+For ^b: selects ^b
+For ^\\bar: selects ^\\bar"
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-superscript)))
+    (list (nth 0 bounds) (nth 1 bounds))))
+
+;; Subscript text objects (i_/a_)
+(evil-define-text-object evil-tex-bora-inner-subscript (count &optional beg end type)
+  "Select inner subscript.
+For _{foo}: selects foo
+For _b: selects b
+For _\\bar: selects \\bar"
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-subscript)))
+    (list (nth 2 bounds) (nth 3 bounds))))
+
+(evil-define-text-object evil-tex-bora-outer-subscript (count &optional beg end type)
+  "Select outer subscript.
+For _{foo}: selects _{foo}
+For _b: selects _b
+For _\\bar: selects _\\bar"
+  :extend-selection nil
+  (when-let ((bounds (evil-tex-bora--bounds-of-subscript)))
     (list (nth 0 bounds) (nth 1 bounds))))
 
 ;;; Toggles
@@ -1624,11 +1732,15 @@ Things like 'csm' (change surrounding math) will work after this."
   (define-key evil-tex-bora-inner-text-objects-map "c" #'evil-tex-bora-inner-command)
   (define-key evil-tex-bora-inner-text-objects-map "m" #'evil-tex-bora-inner-math)
   (define-key evil-tex-bora-inner-text-objects-map "d" #'evil-tex-bora-inner-delimiter)
+  (define-key evil-tex-bora-inner-text-objects-map "^" #'evil-tex-bora-inner-superscript)
+  (define-key evil-tex-bora-inner-text-objects-map "_" #'evil-tex-bora-inner-subscript)
   ;; Outer text objects
   (define-key evil-tex-bora-outer-text-objects-map "e" #'evil-tex-bora-outer-environment)
   (define-key evil-tex-bora-outer-text-objects-map "c" #'evil-tex-bora-outer-command)
   (define-key evil-tex-bora-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
-  (define-key evil-tex-bora-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter))
+  (define-key evil-tex-bora-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)
+  (define-key evil-tex-bora-outer-text-objects-map "^" #'evil-tex-bora-outer-superscript)
+  (define-key evil-tex-bora-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript))
 
 ;; Shorten which-key descriptions
 (with-eval-after-load 'which-key
@@ -1698,11 +1810,15 @@ These bindings are global but the functions check if evil-tex-bora-mode is activ
     (define-key evil-inner-text-objects-map "c" #'evil-tex-bora-inner-command)
     (define-key evil-inner-text-objects-map "m" #'evil-tex-bora-inner-math)
     (define-key evil-inner-text-objects-map "d" #'evil-tex-bora-inner-delimiter)
+    (define-key evil-inner-text-objects-map "^" #'evil-tex-bora-inner-superscript)
+    (define-key evil-inner-text-objects-map "_" #'evil-tex-bora-inner-subscript)
     ;; Outer text objects (used with 'a' prefix, e.g., vac, vae)
     (define-key evil-outer-text-objects-map "e" #'evil-tex-bora-outer-environment)
     (define-key evil-outer-text-objects-map "c" #'evil-tex-bora-outer-command)
     (define-key evil-outer-text-objects-map "m" #'evil-tex-bora-outer-math)
-    (define-key evil-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)))
+    (define-key evil-outer-text-objects-map "d" #'evil-tex-bora-outer-delimiter)
+    (define-key evil-outer-text-objects-map "^" #'evil-tex-bora-outer-superscript)
+    (define-key evil-outer-text-objects-map "_" #'evil-tex-bora-outer-subscript)))
 
 ;; Setup text objects and toggle keybindings when package is loaded (after evil)
 (with-eval-after-load 'evil

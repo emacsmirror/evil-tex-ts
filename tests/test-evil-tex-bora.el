@@ -1802,5 +1802,237 @@ _{line1\\nline2} should become _{line1 line2}."
               (insert normalized))))))
     (should (string= (buffer-string) "^{hello world}"))))
 
+;;; ==========================================================================
+;;; Superscript/Subscript text object tests (i^/a^, i_/a_)
+;;; ==========================================================================
+
+(ert-deftest test-superscript-curly-group ()
+  "Test superscript with curly group: a^{foo}.
+a^ (outer) selects ^{foo}
+i^ (inner) selects foo"
+  (evil-tex-bora-test-with-latex "\\(a^{foo}\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      ;; outer should be ^{foo}
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^{foo}"))
+      ;; inner should be foo
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "foo")))))
+
+(ert-deftest test-superscript-single-letter ()
+  "Test superscript with single letter: a^b.
+a^ (outer) selects ^b
+i^ (inner) selects b"
+  (evil-tex-bora-test-with-latex "\\(a^b\\)" 5
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      ;; outer should be ^b
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^b"))
+      ;; inner should be b
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "b")))))
+
+(ert-deftest test-superscript-command ()
+  "Test superscript with command: a^\\bar.
+a^ (outer) selects ^\\bar
+i^ (inner) selects \\bar"
+  (evil-tex-bora-test-with-latex "\\(a^\\bar\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      ;; outer should be ^\bar
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^\\bar"))
+      ;; inner should be \bar
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "\\bar")))))
+
+(ert-deftest test-superscript-cursor-on-caret ()
+  "Test superscript with cursor on ^ character."
+  (evil-tex-bora-test-with-latex "\\(a^{foo}\\)" 4
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^{foo}")))))
+
+(ert-deftest test-subscript-curly-group ()
+  "Test subscript with curly group: a_{foo}.
+a_ (outer) selects _{foo}
+i_ (inner) selects foo"
+  (evil-tex-bora-test-with-latex "\\(a_{foo}\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      ;; outer should be _{foo}
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_{foo}"))
+      ;; inner should be foo
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "foo")))))
+
+(ert-deftest test-subscript-single-letter ()
+  "Test subscript with single letter: a_b.
+a_ (outer) selects _b
+i_ (inner) selects b"
+  (evil-tex-bora-test-with-latex "\\(a_b\\)" 5
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      ;; outer should be _b
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_b"))
+      ;; inner should be b
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "b")))))
+
+(ert-deftest test-subscript-command ()
+  "Test subscript with command: a_\\bar.
+a_ (outer) selects _\\bar
+i_ (inner) selects \\bar"
+  (evil-tex-bora-test-with-latex "\\(a_\\bar\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      ;; outer should be _\bar
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_\\bar"))
+      ;; inner should be \bar
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "\\bar")))))
+
+(ert-deftest test-subscript-cursor-on-underscore ()
+  "Test subscript with cursor on _ character."
+  (evil-tex-bora-test-with-latex "\\(a_{foo}\\)" 4
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_{foo}")))))
+
+(ert-deftest test-superscript-complex-content ()
+  "Test superscript with complex content: x^{2n+1}."
+  (evil-tex-bora-test-with-latex "\\(x^{2n+1}\\)" 7
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^{2n+1}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "2n+1")))))
+
+(ert-deftest test-subscript-complex-content ()
+  "Test subscript with complex content: a_{i,j}."
+  (evil-tex-bora-test-with-latex "\\(a_{i,j}\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_{i,j}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "i,j")))))
+
+(ert-deftest test-superscript-and-subscript-combined ()
+  "Test when both superscript and subscript are present: a_i^j.
+Cursor on superscript should select superscript."
+  (evil-tex-bora-test-with-latex "\\(a_i^j\\)" 6
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^j"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "j")))))
+
+(ert-deftest test-subscript-with-superscript-present ()
+  "Test when both superscript and subscript are present: a_i^j.
+Cursor on subscript should select subscript."
+  (evil-tex-bora-test-with-latex "\\(a_i^j\\)" 5
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_i"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "i")))))
+
+(ert-deftest test-bounds-of-superscript-function-exists ()
+  "Test that bounds-of-superscript function is defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora--bounds-of-superscript)))
+
+(ert-deftest test-bounds-of-subscript-function-exists ()
+  "Test that bounds-of-subscript function is defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora--bounds-of-subscript)))
+
+(ert-deftest test-superscript-text-objects-exist ()
+  "Test that superscript text objects are defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora-inner-superscript))
+  (should (fboundp 'evil-tex-bora-outer-superscript)))
+
+(ert-deftest test-subscript-text-objects-exist ()
+  "Test that subscript text objects are defined."
+  (skip-unless evil-tex-bora-loaded)
+  (should (fboundp 'evil-tex-bora-inner-subscript))
+  (should (fboundp 'evil-tex-bora-outer-subscript)))
+
+;;; Forward search tests for superscript/subscript
+
+(ert-deftest test-superscript-forward-search ()
+  "Test superscript selection when cursor is before ^.
+\\(a|b^{foo}\\) -> should find ^{foo} to the right."
+  (evil-tex-bora-test-with-latex "\\(ab^{foo}\\)" 3  ; cursor on 'a'
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^{foo}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "foo")))))
+
+(ert-deftest test-subscript-forward-search ()
+  "Test subscript selection when cursor is before _.
+\\(a|b_{foo}\\) -> should find _{foo} to the right."
+  (evil-tex-bora-test-with-latex "\\(ab_{foo}\\)" 3  ; cursor on 'a'
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_{foo}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "foo")))))
+
+(ert-deftest test-superscript-forward-search-single-letter ()
+  "Test superscript forward search with single letter argument.
+\\(a|b^c\\) -> should find ^c to the right."
+  (evil-tex-bora-test-with-latex "\\(ab^c\\)" 3
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^c"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "c")))))
+
+(ert-deftest test-subscript-forward-search-single-letter ()
+  "Test subscript forward search with single letter argument.
+\\(a|b_c\\) -> should find _c to the right."
+  (evil-tex-bora-test-with-latex "\\(ab_c\\)" 3
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_c"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "c")))))
+
+(ert-deftest test-superscript-forward-search-at-start ()
+  "Test superscript forward search from start of math.
+\\(|x^2\\) -> should find ^2."
+  (evil-tex-bora-test-with-latex "\\(x^2\\)" 3  ; cursor on 'x'
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^2"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "2")))))
+
+(ert-deftest test-subscript-forward-search-at-start ()
+  "Test subscript forward search from start of math.
+\\(|a_i\\) -> should find _i."
+  (evil-tex-bora-test-with-latex "\\(a_i\\)" 3  ; cursor on 'a'
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_i"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "i")))))
+
+(ert-deftest test-superscript-no-forward-match ()
+  "Test superscript returns nil when no ^ exists after cursor.
+\\(x^2|y\\) -> no superscript after cursor."
+  (evil-tex-bora-test-with-latex "\\(x^2y\\)" 6  ; cursor on 'y'
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should-not bounds))))
+
+(ert-deftest test-subscript-no-forward-match ()
+  "Test subscript returns nil when no _ exists after cursor.
+\\(a_i|b\\) -> no subscript after cursor."
+  (evil-tex-bora-test-with-latex "\\(a_ib\\)" 6  ; cursor on 'b'
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should-not bounds))))
+
+(ert-deftest test-superscript-forward-search-multiple ()
+  "Test superscript forward search finds nearest ^.
+\\(|a^2 + b^3\\) -> should find ^2 (nearest)."
+  (evil-tex-bora-test-with-latex "\\(a^2 + b^3\\)" 3  ; cursor on 'a'
+    (let ((bounds (evil-tex-bora--bounds-of-superscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "^2")))))
+
+(ert-deftest test-subscript-forward-search-multiple ()
+  "Test subscript forward search finds nearest _.
+\\(|a_1 + b_2\\) -> should find _1 (nearest)."
+  (evil-tex-bora-test-with-latex "\\(a_1 + b_2\\)" 3  ; cursor on 'a'
+    (let ((bounds (evil-tex-bora--bounds-of-subscript)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "_1")))))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here
