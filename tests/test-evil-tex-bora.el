@@ -2145,5 +2145,121 @@ Cursor on subscript should select subscript."
   (should (member "chapter" evil-tex-bora--section-types))
   (should (member "part" evil-tex-bora--section-types)))
 
+;;; ==========================================================================
+;;; Seek forward tests - text objects find target to the right on same line
+;;; ==========================================================================
+
+(ert-deftest test-math-seek-forward ()
+  "Test math bounds when cursor is before math on the same line.
+|text $x^2$ -> should find $x^2$."
+  (evil-tex-bora-test-with-latex "text $x^2$" 1  ; cursor at start
+    (let ((bounds (evil-tex-bora--bounds-of-math)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "$x^2$"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "x^2")))))
+
+(ert-deftest test-math-seek-forward-paren ()
+  "Test math bounds with \\(...\\) when cursor is before.
+|text \\(a + b\\) -> should find \\(a + b\\)."
+  (evil-tex-bora-test-with-latex "text \\(a + b\\)" 1
+    (let ((bounds (evil-tex-bora--bounds-of-math)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\(a + b\\)"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a + b")))))
+
+(ert-deftest test-math-seek-forward-display ()
+  "Test math bounds with \\[...\\] when cursor is before.
+|text \\[E=mc^2\\] -> should find \\[E=mc^2\\]."
+  (evil-tex-bora-test-with-latex "text \\[E=mc^2\\]" 1
+    (let ((bounds (evil-tex-bora--bounds-of-math)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\[E=mc^2\\]"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "E=mc^2")))))
+
+(ert-deftest test-math-no-seek-forward-next-line ()
+  "Test math does NOT seek forward to next line.
+|text\\n$x$ -> should return nil."
+  (evil-tex-bora-test-with-latex "text\n$x$" 1
+    (let ((bounds (evil-tex-bora--bounds-of-math)))
+      (should-not bounds))))
+
+(ert-deftest test-command-seek-forward ()
+  "Test command bounds when cursor is before command on the same line.
+|text \\textbf{hello} -> should find \\textbf{hello}."
+  (evil-tex-bora-test-with-latex "text \\textbf{hello}" 1
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\textbf{hello}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "hello")))))
+
+(ert-deftest test-command-seek-forward-frac ()
+  "Test command bounds with \\frac when cursor is before.
+|text \\frac{a}{b} -> should find \\frac{a}{b}, inner is 'a'."
+  (evil-tex-bora-test-with-latex "text \\frac{a}{b}" 1
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\frac{a}{b}"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a")))))
+
+(ert-deftest test-command-no-seek-forward-next-line ()
+  "Test command does NOT seek forward to next line.
+|text\\n\\textbf{x} -> should return nil."
+  (evil-tex-bora-test-with-latex "text\n\\textbf{x}" 1
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should-not bounds))))
+
+(ert-deftest test-delimiter-seek-forward ()
+  "Test delimiter bounds when cursor is before delimiter on the same line.
+|text (a + b) -> should find (a + b)."
+  (evil-tex-bora-test-with-latex "\\(text (a + b)\\)" 4  ; cursor on 't'
+    (let ((bounds (evil-tex-bora--bounds-of-delimiter)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "(a + b)"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "a + b")))))
+
+(ert-deftest test-delimiter-seek-forward-left-right ()
+  "Test delimiter bounds with \\left(\\right) when cursor is before.
+|text \\left(x\\right) -> should find \\left(x\\right)."
+  (evil-tex-bora-test-with-latex "\\(text \\left(x\\right)\\)" 4
+    (let ((bounds (evil-tex-bora--bounds-of-delimiter)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\left(x\\right)"))
+      (should (string= (buffer-substring (nth 2 bounds) (nth 3 bounds)) "x")))))
+
+(ert-deftest test-environment-seek-forward ()
+  "Test environment bounds when cursor is before environment on the same line.
+|text \\begin{quote}hi\\end{quote} -> should find environment."
+  (evil-tex-bora-test-with-latex "text \\begin{quote}hi\\end{quote}" 1
+    (let ((bounds (evil-tex-bora--bounds-of-environment)))
+      (should bounds)
+      (let ((outer (buffer-substring (nth 0 bounds) (nth 1 bounds))))
+        (should (string-match-p "\\\\begin{quote}" outer))
+        (should (string-match-p "\\\\end{quote}" outer))))))
+
+(ert-deftest test-section-seek-forward ()
+  "Test section bounds when cursor is before section on the same line.
+|text \\section{Title}... -> should find section."
+  (evil-tex-bora-test-with-latex "text \\section{Title}\nContent" 1
+    (let ((bounds (evil-tex-bora--bounds-of-section)))
+      (should bounds)
+      (should (string-match-p "\\\\section{Title}"
+                              (buffer-substring (nth 0 bounds) (nth 1 bounds)))))))
+
+(ert-deftest test-math-seek-forward-nearest ()
+  "Test math seek forward finds the nearest math.
+|text $a$ and $b$ -> should find $a$ (nearest)."
+  (evil-tex-bora-test-with-latex "text $a$ and $b$" 1
+    (let ((bounds (evil-tex-bora--bounds-of-math)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "$a$")))))
+
+(ert-deftest test-command-seek-forward-nearest ()
+  "Test command seek forward finds the nearest command.
+|text \\alpha \\beta -> should find \\alpha (nearest)."
+  (evil-tex-bora-test-with-latex "text \\alpha \\beta" 1
+    (let ((bounds (evil-tex-bora--bounds-of-command)))
+      (should bounds)
+      (should (string= (buffer-substring (nth 0 bounds) (nth 1 bounds)) "\\alpha")))))
+
 (provide 'test-evil-tex-bora)
 ;;; test-evil-tex-bora.el ends here

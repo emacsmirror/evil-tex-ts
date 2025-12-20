@@ -153,8 +153,96 @@ Tree-sitter node ranges are half-open: [start, end)."
 
 ;;; Text object helpers
 
+(defun evil-tex-bora--bounds-of-environment-at-node (env-node)
+  "Return bounds for ENV-NODE.
+Helper function that extracts bounds from a known environment node.
+
+When `evil-tex-bora-select-newlines-with-envs' is non-nil:
+- outer-end extends to include trailing newline (for clean `dae' deletion)
+- inner selection includes the newline before \\end{...}
+- inner selection is anchored to the indentation level of the \\end line"
+  (let* ((outer-beg (treesit-node-start env-node))
+         (outer-end (treesit-node-end env-node))
+         ;; Find \begin{...} and \end{...} to get inner bounds
+         (begin-node (treesit-node-child-by-field-name env-node "begin"))
+         (end-node (treesit-node-child-by-field-name env-node "end"))
+         (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
+         (inner-end (if end-node (treesit-node-start end-node) outer-end)))
+    ;; Adjust bounds for newlines if option is enabled
+    (when evil-tex-bora-select-newlines-with-envs
+      ;; Extend outer-beg to include leading whitespace on the line
+      ;; This ensures 'dae' deletes the whole line including indentation
+      (save-excursion
+        (goto-char outer-beg)
+        (let ((line-start (line-beginning-position)))
+          (when (string-match-p "\\`[ \t]*\\'" (buffer-substring line-start outer-beg))
+            (setq outer-beg line-start))))
+      ;; Extend outer-end to include trailing newline
+      (save-excursion
+        (goto-char outer-end)
+        (when (eq (char-after) ?\n)
+          (setq outer-end (1+ outer-end))))
+      (let ((end-command-pos inner-end)
+            end-indent-col
+            content-line-bol
+            content-indent-col
+            start-col)
+        ;; Ensure END-COMMAND-POS points at the backslash of \end{...}
+        ;; even if tree-sitter's `end' node starts at `end' (without the \).
+        (save-excursion
+          (goto-char end-command-pos)
+          (when (and (> end-command-pos (point-min))
+                     (eq (char-before) ?\\))
+            (setq end-command-pos (1- end-command-pos))))
+        (setq inner-end end-command-pos)
+        (save-excursion
+          (goto-char end-command-pos)
+          (setq end-indent-col (current-column)))
+        ;; If the environment is multi-line, anchor the inner range start/end
+        ;; to the indentation of the \end line so `die' doesn't land in column 0.
+        (save-excursion
+          (goto-char inner-beg)
+          (when (eq (char-after) ?\n)
+            (setq content-line-bol (1+ (point)))))
+        (when (and content-line-bol end-indent-col)
+          (save-excursion
+            (goto-char content-line-bol)
+            (setq content-indent-col (progn (back-to-indentation) (current-column))))
+          (setq start-col (min end-indent-col content-indent-col))
+          ;; Start inside the indentation on the first content line.
+          (save-excursion
+            (goto-char content-line-bol)
+            (move-to-column start-col)
+            (setq inner-beg (point)))
+          ;; End inside the indentation on the \end line (same column),
+          ;; so the remaining indentation stays correct after deletion.
+          (save-excursion
+            (goto-char end-command-pos)
+            (goto-char (line-beginning-position))
+            (move-to-column start-col)
+            (setq inner-end (point))))))
+    (list outer-beg outer-end inner-beg inner-end)))
+
+(defun evil-tex-bora--find-environment-forward ()
+  "Search forward on current line for nearest environment and return its bounds.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (save-excursion
+    (let ((line-end (line-end-position))
+          (found nil))
+      ;; Search for \begin{ on the current line
+      (while (and (not found)
+                  (re-search-forward "\\\\begin{" line-end t))
+        (goto-char (match-beginning 0))
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (env-node (evil-tex-bora--find-parent-by-type
+                               node '("generic_environment" "math_environment"))))
+          (setq found (evil-tex-bora--bounds-of-environment-at-node env-node)))
+        (unless found
+          (goto-char (match-end 0))))
+      found)))
+
 (defun evil-tex-bora--bounds-of-environment ()
-  "Return bounds of LaTeX environment at point.
+  "Return bounds of LaTeX environment at or after point on the same line.
 Returns (outer-beg outer-end inner-beg inner-end) or nil.
 
 When `evil-tex-bora-select-newlines-with-envs' is non-nil:
@@ -162,71 +250,18 @@ When `evil-tex-bora-select-newlines-with-envs' is non-nil:
 - inner selection includes the newline before \\end{...} (so `die' removes
   the whole inner block, like Vim's `di)` on multi-line parens)
 - inner selection is anchored to the indentation level of the \\end line,
-  so after `die' point doesn't jump to column 0."
-  (when-let* ((node (evil-tex-bora--get-node-at-point))
-              (env-node (evil-tex-bora--find-parent-by-type
-                         node '("generic_environment" "math_environment"))))
-    (let* ((outer-beg (treesit-node-start env-node))
-           (outer-end (treesit-node-end env-node))
-           ;; Find \begin{...} and \end{...} to get inner bounds
-           (begin-node (treesit-node-child-by-field-name env-node "begin"))
-           (end-node (treesit-node-child-by-field-name env-node "end"))
-           (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
-           (inner-end (if end-node (treesit-node-start end-node) outer-end)))
-      ;; Adjust bounds for newlines if option is enabled
-      (when evil-tex-bora-select-newlines-with-envs
-        ;; Extend outer-beg to include leading whitespace on the line
-        ;; This ensures 'dae' deletes the whole line including indentation
-        (save-excursion
-          (goto-char outer-beg)
-          (let ((line-start (line-beginning-position)))
-            (when (string-match-p "\\`[ \t]*\\'" (buffer-substring line-start outer-beg))
-              (setq outer-beg line-start))))
-        ;; Extend outer-end to include trailing newline
-        (save-excursion
-          (goto-char outer-end)
-          (when (eq (char-after) ?\n)
-            (setq outer-end (1+ outer-end))))
-        (let ((end-command-pos inner-end)
-              end-indent-col
-              content-line-bol
-              content-indent-col
-              start-col)
-          ;; Ensure END-COMMAND-POS points at the backslash of \end{...}
-          ;; even if tree-sitter's `end' node starts at `end' (without the \).
-          (save-excursion
-            (goto-char end-command-pos)
-            (when (and (> end-command-pos (point-min))
-                       (eq (char-before) ?\\))
-              (setq end-command-pos (1- end-command-pos))))
-          (setq inner-end end-command-pos)
-          (save-excursion
-            (goto-char end-command-pos)
-            (setq end-indent-col (current-column)))
-          ;; If the environment is multi-line, anchor the inner range start/end
-          ;; to the indentation of the \end line so `die' doesn't land in column 0.
-          (save-excursion
-            (goto-char inner-beg)
-            (when (eq (char-after) ?\n)
-              (setq content-line-bol (1+ (point)))))
-          (when (and content-line-bol end-indent-col)
-            (save-excursion
-              (goto-char content-line-bol)
-              (setq content-indent-col (progn (back-to-indentation) (current-column))))
-            (setq start-col (min end-indent-col content-indent-col))
-            ;; Start inside the indentation on the first content line.
-            (save-excursion
-              (goto-char content-line-bol)
-              (move-to-column start-col)
-              (setq inner-beg (point)))
-            ;; End inside the indentation on the \end line (same column),
-            ;; so the remaining indentation stays correct after deletion.
-            (save-excursion
-              (goto-char end-command-pos)
-              (goto-char (line-beginning-position))
-              (move-to-column start-col)
-              (setq inner-end (point))))))
-      (list outer-beg outer-end inner-beg inner-end))))
+  so after `die' point doesn't jump to column 0.
+
+First tries to find environment containing point.
+If not found, searches forward on the same line for the nearest environment."
+  (or
+   ;; First try: find environment containing point
+   (when-let* ((node (evil-tex-bora--get-node-at-point))
+               (env-node (evil-tex-bora--find-parent-by-type
+                          node '("generic_environment" "math_environment"))))
+     (evil-tex-bora--bounds-of-environment-at-node env-node))
+   ;; Fallback: search forward on the same line
+   (evil-tex-bora--find-environment-forward)))
 
 (defun evil-tex-bora--change-operator-p ()
   "Return non-nil when the current Evil operator is a change command."
@@ -276,8 +311,37 @@ Returns nil for single-line environments or if no environment is found."
     "text_mode")
   "List of tree-sitter node types that represent LaTeX commands.")
 
+(defun evil-tex-bora--find-command-forward ()
+  "Search forward on current line for nearest command and return its bounds.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (save-excursion
+    (let ((line-end (line-end-position))
+          (found nil))
+      ;; Search for backslash followed by letters (command pattern)
+      (while (and (not found)
+                  (re-search-forward "\\\\[a-zA-Z@]+" line-end t))
+        (goto-char (match-beginning 0))
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (cmd-node (evil-tex-bora--find-parent-by-type
+                               node evil-tex-bora--command-types)))
+          (let* ((outer-beg (treesit-node-start cmd-node))
+                 (arg-info (evil-tex-bora--command-curly-args cmd-node))
+                 (outer-end (car arg-info))
+                 (curly-nodes (cdr arg-info))
+                 (target-curly (evil-tex-bora--find-target-curly-group curly-nodes (point)))
+                 (inner-beg (if target-curly
+                                (1+ (treesit-node-start target-curly))
+                              outer-end))
+                 (inner-end (if target-curly
+                                (1- (treesit-node-end target-curly))
+                              outer-end)))
+            (setq found (list outer-beg outer-end inner-beg inner-end))))
+        (unless found
+          (goto-char (match-end 0))))
+      found)))
+
 (defun evil-tex-bora--bounds-of-command ()
-  "Return bounds of LaTeX command at point.
+  "Return bounds of LaTeX command at or after point on the same line.
 Returns (outer-beg outer-end inner-beg inner-end) or nil.
 
 Inner command is defined as:
@@ -290,7 +354,10 @@ For example with cursor at |:
   \\frac{a}{b|}   -> inner is \"b\"
   \\fr|ac{a}{b}   -> inner is \"a\" (nearest to the right)
   \\sqrt[n]{x|}   -> inner is \"x\"
-  \\alpha|        -> inner is empty"
+  \\alpha|        -> inner is empty
+
+First tries to find command containing point.
+If not found, searches forward on the same line for the nearest command."
   ;; Ensure we have a parser
   (unless (treesit-parser-list)
     (when (evil-tex-bora--ensure-parser)
@@ -298,7 +365,9 @@ For example with cursor at |:
   ;; Try fallback first - it handles cases like \sqrt[n]{x} where
   ;; tree-sitter doesn't recognize the curly group as part of the command
   (or (evil-tex-bora--bounds-of-command-fallback)
-      (evil-tex-bora--bounds-of-command-tree-sitter)))
+      (evil-tex-bora--bounds-of-command-tree-sitter)
+      ;; Fallback: search forward on the same line
+      (evil-tex-bora--find-command-forward)))
 
 (defun evil-tex-bora--command-curly-args (cmd-node)
   "Return command curly arguments info for CMD-NODE.
@@ -636,33 +705,64 @@ Returns the group containing PT, or nearest to the right, or first."
           (push child args))))
     (nreverse args)))
 
-(defun evil-tex-bora--bounds-of-math ()
-  "Return bounds of math environment at point.
+(defun evil-tex-bora--bounds-of-math-at-node (math-node)
+  "Return bounds for MATH-NODE.
+Helper function that extracts bounds from a known math node."
+  (let* ((outer-beg (treesit-node-start math-node))
+         (outer-end (treesit-node-end math-node))
+         (node-type (treesit-node-type math-node)))
+    (cond
+     ;; For math_environment, use begin/end nodes like regular environments
+     ((string= node-type "math_environment")
+      (let* ((begin-node (treesit-node-child-by-field-name math-node "begin"))
+             (end-node (treesit-node-child-by-field-name math-node "end"))
+             (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
+             (inner-end (if end-node (treesit-node-start end-node) outer-end)))
+        (list outer-beg outer-end inner-beg inner-end)))
+     ;; For inline_formula and displayed_equation, find delimiter tokens
+     (t
+      (let* ((child-count (treesit-node-child-count math-node))
+             (first-child (when (> child-count 0) (treesit-node-child math-node 0)))
+             (last-child (when (> child-count 0) (treesit-node-child math-node (1- child-count))))
+             ;; Inner starts after first delimiter, ends before last delimiter
+             (inner-beg (if first-child (treesit-node-end first-child) outer-beg))
+             (inner-end (if last-child (treesit-node-start last-child) outer-end)))
+        (list outer-beg outer-end inner-beg inner-end))))))
+
+(defun evil-tex-bora--find-math-forward ()
+  "Search forward on current line for nearest math and return its bounds.
 Returns (outer-beg outer-end inner-beg inner-end) or nil."
-  (when-let* ((node (evil-tex-bora--get-node-at-point))
-              (math-node (evil-tex-bora--find-parent-by-type
-                          node '("inline_formula" "displayed_equation"
-                                 "math_environment"))))
-    (let* ((outer-beg (treesit-node-start math-node))
-           (outer-end (treesit-node-end math-node))
-           (node-type (treesit-node-type math-node)))
-      (cond
-       ;; For math_environment, use begin/end nodes like regular environments
-       ((string= node-type "math_environment")
-        (let* ((begin-node (treesit-node-child-by-field-name math-node "begin"))
-               (end-node (treesit-node-child-by-field-name math-node "end"))
-               (inner-beg (if begin-node (treesit-node-end begin-node) outer-beg))
-               (inner-end (if end-node (treesit-node-start end-node) outer-end)))
-          (list outer-beg outer-end inner-beg inner-end)))
-       ;; For inline_formula and displayed_equation, find delimiter tokens
-       (t
-        (let* ((child-count (treesit-node-child-count math-node))
-               (first-child (when (> child-count 0) (treesit-node-child math-node 0)))
-               (last-child (when (> child-count 0) (treesit-node-child math-node (1- child-count))))
-               ;; Inner starts after first delimiter, ends before last delimiter
-               (inner-beg (if first-child (treesit-node-end first-child) outer-beg))
-               (inner-end (if last-child (treesit-node-start last-child) outer-end)))
-          (list outer-beg outer-end inner-beg inner-end)))))))
+  (save-excursion
+    (let ((line-end (line-end-position))
+          (found nil))
+      ;; Search for common math delimiters on the current line
+      (while (and (not found)
+                  (re-search-forward "\\$\\|\\\\(\\|\\\\\\[\\|\\\\begin{" line-end t))
+        (backward-char (length (match-string 0)))
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (math-node (evil-tex-bora--find-parent-by-type
+                                node '("inline_formula" "displayed_equation"
+                                       "math_environment"))))
+          (setq found (evil-tex-bora--bounds-of-math-at-node math-node)))
+        (unless found
+          (forward-char (length (match-string 0)))))
+      found)))
+
+(defun evil-tex-bora--bounds-of-math ()
+  "Return bounds of math environment at or after point on the same line.
+Returns (outer-beg outer-end inner-beg inner-end) or nil.
+
+First tries to find math containing point.
+If not found, searches forward on the same line for the nearest math."
+  (or
+   ;; First try: find math containing point
+   (when-let* ((node (evil-tex-bora--get-node-at-point))
+               (math-node (evil-tex-bora--find-parent-by-type
+                           node '("inline_formula" "displayed_equation"
+                                  "math_environment"))))
+     (evil-tex-bora--bounds-of-math-at-node math-node))
+   ;; Fallback: search forward on the same line
+   (evil-tex-bora--find-math-forward)))
 
 (defconst evil-tex-bora--delimiter-pairs
   '(("(" . ")")
@@ -683,14 +783,59 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
     "\\Biggl" "\\Biggr" "\\Bigg")
   "Prefixes that can appear before delimiters.")
 
+(defun evil-tex-bora--find-delimiter-forward ()
+  "Search forward on current line for nearest delimiter and return its bounds.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (save-excursion
+    (let ((line-end (line-end-position))
+          (found nil))
+      ;; Search for opening delimiters on the current line
+      (while (and (not found)
+                  (re-search-forward "\\\\left\\|\\\\bigl\\|\\\\Bigl\\|\\\\biggl\\|\\\\Biggl\\|\\\\big\\|\\\\Big\\|\\\\bigg\\|\\\\Bigg\\|[([{]\\|\\\\{\\|\\\\langle\\|\\\\lvert\\|\\\\lVert\\|\\\\lfloor\\|\\\\lceil" line-end t))
+        (goto-char (match-beginning 0))
+        ;; Try math_delimiter first
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (delim-node (evil-tex-bora--find-parent-by-type
+                                 node '("math_delimiter"))))
+          (let* ((outer-beg (treesit-node-start delim-node))
+                 (outer-end (treesit-node-end delim-node))
+                 (left-delim (treesit-node-child-by-field-name delim-node "left_delimiter"))
+                 (right-command (treesit-node-child-by-field-name delim-node "right_command"))
+                 (inner-beg (if left-delim (treesit-node-end left-delim) outer-beg))
+                 (inner-end (if right-command (treesit-node-start right-command) outer-end)))
+            (setq found (list outer-beg outer-end inner-beg inner-end))))
+        ;; If not math_delimiter, try simple delimiter pair
+        (unless found
+          (dolist (pair evil-tex-bora--delimiter-pairs)
+            (when (and (not found)
+                       (looking-at (regexp-quote (car pair))))
+              (let ((left (car pair))
+                    (right (cdr pair)))
+                (condition-case nil
+                    (let ((start (point)))
+                      (forward-sexp)
+                      (let ((end (point)))
+                        (setq found (list start end
+                                          (+ start (length left))
+                                          (- end (length right))))))
+                  (error nil))))))
+        (unless found
+          (goto-char (1+ (match-beginning 0)))))
+      found)))
+
 (defun evil-tex-bora--bounds-of-delimiter ()
-  "Return bounds of delimiter at point.
+  "Return bounds of delimiter at or after point on the same line.
 Returns (outer-beg outer-end inner-beg inner-end) or nil.
 
 Handles tree-sitter `math_delimiter' nodes (\\left/\\right, \\bigl/\\bigr)
-and falls back to searching for matching delimiter pairs."
+and falls back to searching for matching delimiter pairs.
+
+First tries to find delimiter containing point.
+If not found, searches forward on the same line for the nearest delimiter."
   (or (evil-tex-bora--bounds-of-math-delimiter)
-      (evil-tex-bora--bounds-of-simple-delimiter)))
+      (evil-tex-bora--bounds-of-simple-delimiter)
+      ;; Fallback: search forward on the same line
+      (evil-tex-bora--find-delimiter-forward)))
 
 (defun evil-tex-bora--bounds-of-math-delimiter ()
   "Return bounds of math_delimiter node at point, or nil."
@@ -872,32 +1017,63 @@ Returns (outer-beg outer-end inner-beg inner-end) or nil."
     "paragraph" "subparagraph")
   "List of LaTeX section node types in hierarchical order (highest first).")
 
+(defun evil-tex-bora--bounds-of-section-at-node (section-node)
+  "Return bounds for SECTION-NODE.
+Helper function that extracts bounds from a known section node."
+  (let* ((outer-beg (treesit-node-start section-node))
+         (outer-end (treesit-node-end section-node))
+         ;; Find the title curly_group to determine inner-beg
+         (title-node (treesit-node-child-by-field-name section-node "text"))
+         (inner-beg (if title-node
+                        (treesit-node-end title-node)
+                      outer-beg))
+         (inner-end outer-end))
+    ;; Adjust inner-beg to skip newline after title if present
+    (when (and evil-tex-bora-select-newlines-with-envs
+               (< inner-beg (point-max))
+               (eq (char-after inner-beg) ?\n))
+      (setq inner-beg (1+ inner-beg)))
+    (list outer-beg outer-end inner-beg inner-end)))
+
+(defun evil-tex-bora--find-section-forward ()
+  "Search forward on current line for nearest section and return its bounds.
+Returns (outer-beg outer-end inner-beg inner-end) or nil."
+  (save-excursion
+    (let ((line-end (line-end-position))
+          (found nil))
+      ;; Search for section commands on the current line
+      ;; Use simple alternation pattern for better reliability
+      (while (and (not found)
+                  (re-search-forward "\\\\\\(?:part\\|chapter\\|section\\|subsection\\|subsubsection\\|paragraph\\|subparagraph\\)" line-end t))
+        (goto-char (match-beginning 0))
+        (when-let* ((node (treesit-node-at (point) 'latex))
+                    (section-node (evil-tex-bora--find-parent-by-type
+                                   node evil-tex-bora--section-types)))
+          (setq found (evil-tex-bora--bounds-of-section-at-node section-node)))
+        (unless found
+          (goto-char (match-end 0))))
+      found)))
+
 (defun evil-tex-bora--bounds-of-section ()
-  "Return bounds of LaTeX section at point.
+  "Return bounds of LaTeX section at or after point on the same line.
 Returns (outer-beg outer-end inner-beg inner-end) or nil.
 
 Sections include: part, chapter, section, subsection, subsubsection,
 paragraph, and subparagraph.
 
 Outer bounds cover the entire section from \\section{...} to the end.
-Inner bounds start after the section title's closing brace."
-  (when-let* ((node (evil-tex-bora--get-node-at-point))
-              (section-node (evil-tex-bora--find-parent-by-type
-                             node evil-tex-bora--section-types)))
-    (let* ((outer-beg (treesit-node-start section-node))
-           (outer-end (treesit-node-end section-node))
-           ;; Find the title curly_group to determine inner-beg
-           (title-node (treesit-node-child-by-field-name section-node "text"))
-           (inner-beg (if title-node
-                          (treesit-node-end title-node)
-                        outer-beg))
-           (inner-end outer-end))
-      ;; Adjust inner-beg to skip newline after title if present
-      (when (and evil-tex-bora-select-newlines-with-envs
-                 (< inner-beg (point-max))
-                 (eq (char-after inner-beg) ?\n))
-        (setq inner-beg (1+ inner-beg)))
-      (list outer-beg outer-end inner-beg inner-end))))
+Inner bounds start after the section title's closing brace.
+
+First tries to find section containing point.
+If not found, searches forward on the same line for the nearest section."
+  (or
+   ;; First try: find section containing point
+   (when-let* ((node (evil-tex-bora--get-node-at-point))
+               (section-node (evil-tex-bora--find-parent-by-type
+                              node evil-tex-bora--section-types)))
+     (evil-tex-bora--bounds-of-section-at-node section-node))
+   ;; Fallback: search forward on the same line
+   (evil-tex-bora--find-section-forward)))
 
 ;;; Section navigation
 
