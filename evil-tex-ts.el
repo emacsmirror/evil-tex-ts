@@ -183,10 +183,17 @@ When `evil-tex-ts-select-newlines-with-envs' is non-nil:
         (let ((line-start (line-beginning-position)))
           (when (string-match-p "\\`[ \t]*\\'" (buffer-substring line-start outer-beg))
             (setq outer-beg line-start))))
-      ;; Extend outer-end to include trailing newline
+      ;; Extend outer-end to include trailing newline, but NOT if the next
+      ;; line starts with \end{...} (which would be parent environment's end).
+      ;; This prevents capturing the parent's \end{...} when dealing with
+      ;; nested environments.
       (save-excursion
         (goto-char outer-end)
-        (when (eq (char-after) ?\n)
+        (when (and (eq (char-after) ?\n)
+                   (or (>= (1+ outer-end) (point-max))
+                       (save-excursion
+                         (forward-char 1)
+                         (not (looking-at "[ \t]*\\\\end{")))))
           (setq outer-end (1+ outer-end))))
       (let ((end-command-pos inner-end)
             end-indent-col

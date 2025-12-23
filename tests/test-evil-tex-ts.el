@@ -736,6 +736,27 @@ This ensures cursor lands on first non-whitespace char after deletion."
             (setq evil-this-operator old-op)
           (makunbound 'evil-this-operator))))))
 
+(ert-deftest test-user-issue-nested-env-does-not-capture-parent-end ()
+  "Regression: `vae` on nested environment should not capture parent's \\end.
+When cursor is inside an inner environment (e.g., align inside Solution),
+the outer selection should NOT include the parent's \\end{...} line."
+  (evil-tex-ts-test-with-latex
+      "\\begin{Solution}
+	\\begin{align}
+      x > 0
+	\\end{align}
+\\end{Solution}
+" 30  ; cursor inside align content
+    (let* ((bounds (evil-tex-ts--bounds-of-environment))
+           (outer-beg (nth 0 bounds))
+           (outer-end (nth 1 bounds))
+           (outer-text (buffer-substring outer-beg outer-end)))
+      ;; Outer should contain \begin{align} and \end{align}
+      (should (string-match-p "\\\\begin{align}" outer-text))
+      (should (string-match-p "\\\\end{align}" outer-text))
+      ;; Outer should NOT contain \end{Solution}
+      (should-not (string-match-p "\\\\end{Solution}" outer-text)))))
+
 ;;; ==========================================================================
 ;;; Toggle function tests (Phase 3)
 ;;; ==========================================================================
