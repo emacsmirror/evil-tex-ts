@@ -15,3 +15,10 @@
 # Emacs desktop
 .emacs.desktop
 .emacs.desktop.lock
+
+# Development files
+CLAUDE.md
+general_plan.md
+examples.md
+test-sections.tex
+auto/

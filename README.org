@@ -33,6 +33,50 @@ This is an early version of the package. While functional, it may contain bugs. 
 * Showcase
 =|= marks point.
 
+** Visual reference
+#+begin_example
+   \foobar{barbaz}     \foobar{barbaz}    \foobar     \foobar    \foobar{}     \foobar{}
+   └─────────────┘             └────┘     └─────┘            ┆   └───────┘             ┆
+          ac                     ic         ac      ic (empty)      ac            ic (empty)
+
+  ┌\begin{foobar}     \begin{foobar}
+  │                  ┌
+ae│ baz            ie│ baz
+  │                  └
+  └\end{foobar}       \end{foobar}
+
+  \(foobar\)    \(foobar\)    \[foobar\]    \[foobar\]
+  └────────┘      └────┘      └────────┘      └────┘
+      am            im            am            im
+
+  (foobar)    (foobar)    \left(foobar\right)    \left(foobar\right)  \Bigl(foobar\Bigr)    \Bigl(foobar\Bigr)
+  └──────┘     └────┘     └─────────────────┘          └────┘         └────────────────┘          └────┘
+     ad          id               ad                     id                   ad                    id
+
+   ┌\section{foo}          \section{foo}
+   │                      ┌
+ aS│ baz                iS│ baz
+   │\subsection*{}        │\subsection*{}
+   └ qux                  └ qux
+    \chapter*{bar}         \chapter*{bar}
+
+   a^{foo}    a^{foo}    a^b    a^b    a^\bar    a^\bar
+    └────┘       └─┘      └╵      ╵     └───┘      └──┘
+      a^          i^      a^     i^      a^         i^
+
+   a_{foo}    a_{foo}    a_b    a_b    a_\bar    a_\bar
+    └────┘       └─┘      └╵      ╵     └───┘      └──┘
+      a_          i_      a_     i_      a_         i_
+
+   & foobar &    & foobar &    & foobar \\    & foobar \\
+   └───────┘      └──────┘     └───────┘       └──────┘
+       aT            iT            aT             iT
+
+    `foobar'      `foobar'     ``foobar''     ``foobar''
+    └──────┘       └────┘      └────────┘       └────┘
+       aq            iq            aQ             iQ
+#+end_example
+
 ** Text object examples
 - =die= (delete inner environment)
 
@@ -40,23 +84,6 @@ This is an early version of the package. While functional, it may contain bugs. 
   #+begin_example
   \begin{equation}
     x^2 + y^2 = z^2|
-  \end{equation}
-  #+end_example
-
-  Press =die=
-
-  After:
-  #+begin_example
-  \begin{equation}
-  \end{equation}
-  #+end_example
-
-  Point can be anywhere inside the environment:
-
-  Before:
-  #+begin_example
-  \be|gin{equation}
-    x^2 + y^2 = z^2
   \end{equation}
   #+end_example
 
@@ -250,6 +277,13 @@ All toggle commands use the =mt= prefix by default (mnemonic: "magnificent toggl
   Available types: =part=, =chapter=, =section=, =subsection=, =subsubsection=, =paragraph=, =subparagraph=
 
 ** Surround examples
+Surround commands follow the =evil-surround= patterns:
+- =ys<text-object><surround-type>= — add surround (e.g., =ysiwe= wraps inner word with environment)
+- =cs<old><new>= — change surround (e.g., =csee= changes environment to environment)
+- =ds<type>= — delete surround (e.g., =dsd= deletes delimiter)
+
+When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for delimiter), press the corresponding key to select (see [[#keymaps][Keymaps]]).
+
 - =ysiwe= (surround word with environment)
 
   Before: |word
@@ -296,6 +330,40 @@ All toggle commands use the =mt= prefix by default (mnemonic: "magnificent toggl
   \end{align*}
   #+end_example
 
+- =cseea= (change environment to align)
+
+  Before:
+  #+begin_example
+  \begin{equation}
+    x^2 + y^2| = z^2
+  \end{equation}
+  #+end_example
+
+  Press =cs= (change surround), =e= (old: environment), =e= (new: environment keymap), =a= (align)
+
+  After:
+  #+begin_example
+  \begin{align}
+    x^2 + y^2 = z^2
+  \end{align}
+  #+end_example
+
+- =dsd= (delete surrounding delimiter)
+
+  Before: =\left(x + y|\right)=
+
+  Press =dsd=
+
+  After: =x + y|=
+
+  Also works with simple delimiters:
+
+  Before: =(a + b|)=
+
+  Press =dsd=
+
+  After: =a + b|=
+
 
 * Installation
 ** Requirements
@@ -330,46 +398,6 @@ This package defines precise text objects based on the AST:
 | ~^~ | Superscripts: ~x^2~, ~x^{...}~                    |                                                 |
 | ~_~ | Subscripts: ~x_i~, ~x_{...}~                      |                                                 |
 
-*** Visual reference
-#+begin_example
-   \foobar{barbaz}     \foobar{barbaz}    \foobar     \foobar    \foobar{}     \foobar{}
-   └─────────────┘             └────┘     └─────┘            ┆   └───────┘             ┆
-          ac                     ic         ac      ic (empty)      ac            ic (empty)
-
-  ┌\begin{foobar}     \begin{foobar}
-  │                  ┌
-ae│ baz            ie│ baz
-  │                  └
-  └\end{foobar}       \end{foobar}
-
-  \(foobar\)    \(foobar\)    \[foobar\]    \[foobar\]
-  └────────┘      └────┘      └────────┘      └────┘
-      am            im            am            im
-
-  (foobar)    (foobar)    \left(foobar\right)    \left(foobar\right)  \Bigl(foobar\Bigr)    \Bigl(foobar\Bigr)
-  └──────┘     └────┘     └─────────────────┘          └────┘         └────────────────┘          └────┘
-     ad          id               ad                     id                   ad                    id
-
-   ┌\section{foo}          \section{foo}
-   │                      ┌
- aS│ baz                iS│ baz
-   │\subsection*{}        │\subsection*{}
-   └ qux                  └ qux
-    \chapter*{bar}         \chapter*{bar}
-
-   a^{foo}    a^{foo}    a^b    a^b    a^\bar    a^\bar
-    └────┘       └─┘      └╵      ╵     └───┘      └──┘
-      a^          i^      a^     i^      a^         i^
-
-   & foobar &    & foobar &    & foobar \\    & foobar \\
-   └───────┘      └──────┘     └───────┘       └──────┘
-       aT            iT            aT             iT
-
-    `foobar'      `foobar'     ``foobar''     ``foobar''
-    └──────┘       └────┘      └────────┘       └────┘
-       aq            iq            aQ             iQ
-#+end_example
-
 ** Toggles
 Default prefix is =mt= ("magnificent toggle").
 
@@ -398,10 +426,12 @@ If `evil-surround` is installed, `evil-tex-ts` adds specific surround pairs.
 See [[#keymaps][Keymaps]] for full keymaps.
 
 ** Navigation
-- ~evil-tex-ts-go-forward-section~
-- ~evil-tex-ts-go-back-section~
+| Key  | Command                           | Description                    |
+|------+-----------------------------------+--------------------------------|
+| =]]= | ~evil-tex-ts-go-forward-section~  | Jump to next section heading   |
+| =[[= | ~evil-tex-ts-go-back-section~     | Jump to previous section heading |
 
-Jump to the next/previous section heading (chapter, section, subsection, etc.).
+Works in both normal and visual modes. Recognizes chapter, section, subsection, etc.
 
 * Configuration
 ** User Options
@@ -429,35 +459,85 @@ Customize these variables via =M-x customize-group RET evil-tex-ts=.
 | *Maintainability*  | Harder (complex regex)       | Easier (standard grammar)      |
 
 * Acknowledgements
-- [[https://github.com/iyefrat/evil-tex][evil-tex]] for the original concept and features.
+- [[https://github.com/iyefrat/evil-tex][evil-tex]] by [[https://github.com/iyefrat][iyefrat]] for the original concept, features, and the visual reference diagram.
 - [[https://github.com/lervag/vimtex][vimtex]] for inspiration on toggles and text objects.
 - [[https://github.com/hpdeifel/evil-latex-textobjects][evil-latex-textobjects]] for laying the groundwork.
 
 * Appendix
 ** Keymaps
 *** Environment Keymap (~e~)
-| Key | Env       | Key | Env         |
-|-----+-----------+-----+-------------|
-| ~x~ | *prompt*  | ~m~ | multline    |
-| ~e~ | equation  | ~c~ | cases       |
-| ~E~ | equation* | ~z~ | tikzpicture |
-| ~a~ | align     | ~f~ | figure      |
-| ~A~ | align*    | ~i~ | itemize     |
-| ~g~ | gather    | ~I~ | enumerate   |
+| Key  | Env         | Key  | Env         |
+|------+-------------+------+-------------|
+| ~x~  | *prompt*    | ~m~  | multline    |
+| ~e~  | equation    | ~M~  | multline*   |
+| ~E~  | equation*   | ~c~  | cases       |
+| ~a~  | align       | ~z~  | tikzpicture |
+| ~A~  | align*      | ~f~  | figure      |
+| ~n~  | alignat     | ~i~  | itemize     |
+| ~N~  | alignat*    | ~I~  | enumerate   |
+| ~g~  | gather      | ~b~  | frame       |
+| ~G~  | gather*     | ~y~  | array       |
+| ~l~  | flalign     | ~r~  | eqnarray    |
+| ~L~  | flalign*    |      |             |
+
+**** Theorem prefix (~t~)
+Press ~t~ then the second key to select theorem-like environment.
+
+Example: =ysiwetd= wraps word in =\begin{definition}...\end{definition}=
+
+| Key  | Env        | Key  | Env       |
+|------+------------+------+-----------|
+| ~ta~ | axiom      | ~tl~ | lemma     |
+| ~tc~ | corollary  | ~tp~ | proof     |
+| ~tC~ | claim      | ~tq~ | question  |
+| ~td~ | definition | ~tr~ | remark    |
+| ~te~ | examples   | ~tt~ | theorem   |
+| ~ts~ | exercise   |      |           |
 
 *** Delimiter Keymap (~d~)
-| Key | Simple | Sized (~p~/~s~/~c~) |
-|-----+--------+------------------|
-| ~P~ | ~()~   | ~\left(\right)~  |
-| ~S~ | ~[]~   | ~\left[\right]~  |
-| ~C~ | ~\{\}~ | ~\left\{\right\}~ |
-| ~V~ | ~\vert\vert~ | ~\left\vert\right\vert~ |
+Uppercase = simple, lowercase = sized (~\left~/~\right~).
+| Key | Simple         | Key | Sized                       |
+|-----+----------------+-----+-----------------------------|
+| ~P~ | ~()~           | ~p~ | ~\left(\right)~             |
+| ~S~ | ~[]~           | ~s~ | ~\left[\right]~             |
+| ~C~ | ~\{\}~         | ~c~ | ~\left\{\right\}~           |
+| ~R~ | ~\langle\rangle~ | ~r~ | ~\left\langle\right\rangle~ |
+| ~V~ | ~\lvert\rvert~ | ~v~ | ~\left\lvert\right\rvert~   |
+| ~N~ | ~\lVert\rVert~ | ~n~ | ~\left\lVert\right\rVert~   |
 
 *** CDLaTeX Accent Keymap (~;~)
-Context sensitive: uses `\mathbf` in math, `\textbf` in text.
-| Key | Accent | Key | Accent |
-|-----+--------+-----+--------|
-| ~.~ | dot    | ~b~ | bold   |
-| ~^~ | hat    | ~i~ | italic |
-| ~-~ | bar    | ~r~ | roman  |
-| ~v~ | check  | ~e~ | emph   |
+Context sensitive: uses ~\mathbf~ in math, ~\textbf~ in text.
+
+**** Math accents
+| Key | Accent    | Key | Accent      |
+|-----+-----------+-----+-------------|
+| ~.~ | dot       | ~:~ | ddot        |
+| ~^~ | hat       | ~H~ | widehat     |
+| ~~~~ | tilde     | ~N~ | widetilde   |
+| ~-~ | bar       | ~T~ | overline    |
+| ~v~ | check     | ~u~ | breve       |
+| ~>~ | vec       | ~/~ | grave       |
+| ~"~ | acute     | ~_~ | underline   |
+| ~{~ | overbrace | ~}~ | underbrace  |
+| ~q~ | sqrt      |     |             |
+
+**** Text styles
+| Key | Style              | Key | Style              |
+|-----+--------------------+-----+--------------------|
+| ~b~ | bold (~bf~)        | ~r~ | roman (~rm~)       |
+| ~i~ | italic (~it~)      | ~e~ | emph               |
+| ~y~ | typewriter (~tt~)  | ~f~ | sans-serif (~sf~)  |
+| ~l~ | slanted (~textsl~) | ~c~ | calligraphic       |
+| ~m~ | mbox               |     |                    |
+
+**** Math size styles
+Useful for controlling formula size, e.g. in fractions.
+
+Example: =ysiw;1= wraps word in ={\displaystyle ...}=
+
+| Key | Style                |
+|-----+----------------------|
+| ~0~ | ~{\textstyle }~        |
+| ~1~ | ~{\displaystyle }~     |
+| ~2~ | ~{\scriptstyle }~      |
+| ~3~ | ~{\scriptscriptstyle }~ |

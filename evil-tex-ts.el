@@ -7,7 +7,7 @@
 ;; Created: 2024
 ;; Version: 0.1.0
 ;; Keywords: tex, emulation, vi, evil, wp
-;; Homepage: https://github.com/chestnykh/evil-tex-ts
+;; Homepage: https://github.com/Prgebish/evil-tex-ts
 ;; Package-Requires: ((emacs "29.1") (evil "1.0"))
 ;;
 ;; This file is NOT part of GNU Emacs.
