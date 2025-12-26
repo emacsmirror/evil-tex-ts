@@ -469,6 +469,32 @@ Customize these variables via =M-x customize-group RET evil-tex-ts=.
 - ~evil-tex-ts-preferred-inline-math~ (default: ~'dollar~) \\
   Preferred format for inline math toggles: =dollar= (~$...$~) or =paren= (~\(...\)~).
 
+** Custom Surround Insertions
+Add your own environments, accents, and delimiters using these functions:
+
+#+BEGIN_SRC emacs-lisp
+;; Add "quote" environment on "q"
+(evil-tex-ts-bind-to-env-map '(("q" . "quote")))
+
+;; Add figure with default [!ht] position
+(evil-tex-ts-bind-to-env-map '(("F" "\\begin{figure}[!ht]" . "\\end{figure}")))
+
+;; Add custom accent
+(evil-tex-ts-bind-to-cdlatex-accents-map '(("B" . "fbox")))
+
+;; Add custom delimiter
+(evil-tex-ts-bind-to-delim-map '(("h" "\\huge(" . "\\huge)")))
+#+END_SRC
+
+See docstrings of ~evil-tex-ts-bind-to-env-map~ for the complete format.
+
+** Custom Toggles
+Bind your function to ~evil-tex-ts-toggle-map~, it's a normal keymap:
+
+#+BEGIN_SRC emacs-lisp
+(define-key evil-tex-ts-toggle-map "x" #'my-custom-toggle-function)
+#+END_SRC
+
 * Differences from evil-tex
 | Feature            | evil-tex (Original)          | evil-tex-ts (This package)     |
 |--------------------+------------------------------+--------------------------------|
