@@ -133,7 +133,7 @@ ae│ baz            ie│ baz
 
   Press =dam=
 
-  After: =some text| =
+  After: =some text|=
 
 - =viS= (select inner section)
 
