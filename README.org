@@ -80,16 +80,16 @@ ae│ baz            ie│ baz
 ** Text object examples
 - =die= (delete inner environment)
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   \begin{equation}
     x^2 + y^2 = z^2|
   \end{equation}
   #+end_example
 
-  _*Press*_ =die=
+  *Press* =die=
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{equation}
   \end{equation}
@@ -99,47 +99,47 @@ ae│ baz            ie│ baz
 
   Point can be anywhere inside the command:
 
-  _*Before:*_ =\textbf{hel|lo}=
+  *Before:* =\textbf{hel|lo}=
 
-  _*Press*_ =cic=
+  *Press* =cic=
 
-  _*After:*_ =\textbf{|}=
+  *After:* =\textbf{|}=
 
-  _*Before:*_ =\tex|tbf{hello}=
+  *Before:* =\tex|tbf{hello}=
 
-  _*Press*_ =cic=
+  *Press* =cic=
 
-  _*After:*_ =\textbf{|}=
+  *After:* =\textbf{|}=
 
   If point is outside a command, seeks the nearest command to the right on the same line:
 
-  _*Before:*_ =s|ome text \textbf{hello}=
+  *Before:* =s|ome text \textbf{hello}=
 
-  _*Press*_ =cic=
+  *Press* =cic=
 
-  _*After:*_ =some text \textbf{|}=
+  *After:* =some text \textbf{|}=
 
 - =dam= (delete around math)
 
-  _*Before:*_ =\(x + y| = z\)=
+  *Before:* =\(x + y| = z\)=
 
-  _*Press*_ =dam=
+  *Press* =dam=
 
-  _*After:*_ (empty)
+  *After:* (empty)
 
   If point is outside math, seeks the nearest math to the right on the same line:
 
-  _*Before:*_ =some te|xt \(x + y\)=
+  *Before:* =some te|xt \(x + y\)=
 
-  _*Press*_ =dam=
+  *Press* =dam=
 
-  _*After:*_ =some text|=
+  *After:* =some text|=
 
 - =viS= (select inner section)
 
   Select the content of a section until the next section (excluding the =\section{...}= header).
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   \section{Introduction}
   This is the intro.|
@@ -148,7 +148,7 @@ ae│ baz            ie│ baz
   \section{Methods}
   #+end_example
 
-  _*Press*_ =viS=
+  *Press* =viS=
 
   After (selected region marked with ##):
   #+begin_example
@@ -190,23 +190,23 @@ All toggle commands use the =mt= prefix by default (mnemonic: "magnificent toggl
 
   Toggle between display math and =align*= environment.
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   \[
     x + y|
   \]
   #+end_example
 
-  _*Press*_ =mtM=
+  *Press* =mtM=
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{align*}
     x + y
   \end{align*}
   #+end_example
 
-  _*Press*_ =mtM= again
+  *Press* =mtM= again
 
   #+begin_example
   \[
@@ -216,11 +216,11 @@ All toggle commands use the =mt= prefix by default (mnemonic: "magnificent toggl
 
   Also works starting from inline math (one-way to =align*=):
 
-  _*Before:*_ =$x + |y$=
+  *Before:* =$x + |y$=
 
-  _*Press*_ =mtM=
+  *Press* =mtM=
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{align*}
     x + y
@@ -256,15 +256,15 @@ All toggle commands use the =mt= prefix by default (mnemonic: "magnificent toggl
 
   Change the type of the current section. A prompt appears with available section types.
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   \section{My Title|}
   Some content here.
   #+end_example
 
-  _*Press*_ =mtS=, select =subsection= from prompt
+  *Press* =mtS=, select =subsection= from prompt
 
-  _*After:*_
+  *After:*
   #+begin_example
   \subsection{My Title}
   Some content here.
@@ -282,11 +282,11 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
 - =ysiwe= (surround word with environment)
 
-  _*Before:*_ |word
+  *Before:* |word
 
-  _*Press*_ =ysiwe=, then type =equation=
+  *Press* =ysiwe=, then type =equation=
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{equation}
     word
@@ -295,11 +295,11 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
 - =Se= (visual surround with environment)
 
-  _*Before:*_ =|1 + 2=
+  *Before:* =|1 + 2=
 
   Select the expression with =v$= (or any visual selection), press =S=, then =e= for environment, then =a= for =align= (see [[#keymaps][Environment Keymap]])
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{align}
     1 + 2
@@ -310,7 +310,7 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
 - =VjSeA= (linewise surround multiple lines with environment)
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   |1 + 2
   3 + 4
@@ -318,7 +318,7 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
   =Vj= selects both lines, =S= starts surround, =e= for environment, =A= for =align*=
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{align*}
     1 + 2
@@ -328,16 +328,16 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
 - =cseea= (change environment to align)
 
-  _*Before:*_
+  *Before:*
   #+begin_example
   \begin{equation}
     x^2 + y^2| = z^2
   \end{equation}
   #+end_example
 
-  _*Press*_ =cs= (change surround), =e= (old: environment), =e= (new: environment keymap), =a= (align)
+  *Press* =cs= (change surround), =e= (old: environment), =e= (new: environment keymap), =a= (align)
 
-  _*After:*_
+  *After:*
   #+begin_example
   \begin{align}
     x^2 + y^2 = z^2
@@ -346,19 +346,19 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 
 - =dsd= (delete surrounding delimiter)
 
-  _*Before:*_ =\left(x + y|\right)=
+  *Before:* =\left(x + y|\right)=
 
-  _*Press*_ =dsd=
+  *Press* =dsd=
 
-  _*After:*_ =x + y|=
+  *After:* =x + y|=
 
   Also works with simple delimiters:
 
-  _*Before:*_ =(a + b|)=
+  *Before:* =(a + b|)=
 
-  _*Press*_ =dsd=
+  *Press* =dsd=
 
-  _*After:*_ =a + b|=
+  *After:* =a + b|=
 
 
 * Installation
