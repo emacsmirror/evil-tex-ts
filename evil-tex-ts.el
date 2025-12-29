@@ -2266,6 +2266,13 @@ Uses `evil-define-minor-mode-key' for consistent priority handling."
 ;; Add global advice for evil-delete (only runs in evil-tex-ts-mode buffers)
 (advice-add 'evil-delete :around #'evil-tex-ts--delete-advice)
 
+(defun evil-tex-ts-unload-function ()
+  "Undo changes made by evil-tex-ts when `unload-feature' is called.
+Removes the advice added to `evil-delete'."
+  (advice-remove 'evil-delete #'evil-tex-ts--delete-advice)
+  ;; Return nil to indicate we handled unloading
+  nil)
+
 ;;;###autoload
 (defun evil-tex-ts-setup ()
   "Setup evil-tex-ts for LaTeX buffers."
