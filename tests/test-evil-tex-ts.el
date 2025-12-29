@@ -1009,13 +1009,15 @@ the outer selection should NOT include the parent's \\end{...} line."
 ;;; Format function tests
 
 (ert-deftest test-get-env-for-surrounding-with-newlines ()
-  "Test env format with newlines enabled."
+  "Test env format with newlines enabled.
+Note: closing does NOT include leading newline because inner content
+from environment text objects already includes trailing newline."
   (skip-unless evil-tex-ts-loaded)
   (let ((evil-tex-ts-include-newlines-in-envs t))
     (let ((result (evil-tex-ts-get-env-for-surrounding "equation")))
       (should (consp result))
       (should (string= (car result) "\\begin{equation}\n"))
-      (should (string= (cdr result) "\n\\end{equation}")))))
+      (should (string= (cdr result) "\\end{equation}")))))
 
 (ert-deftest test-get-env-for-surrounding-without-newlines ()
   "Test env format without newlines."

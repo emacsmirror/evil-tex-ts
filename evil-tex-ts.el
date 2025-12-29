@@ -1496,6 +1496,10 @@ Also works with inline math ($...$) converting to align*."
 
 ;;; Evil-surround integration
 
+(defvar evil-tex-ts--which-key-replacements nil
+  "Alist of (KEYMAP . REPLACEMENTS) for which-key integration.
+Each REPLACEMENTS is a list of (KEY DESCRIPTION ...) pairs.")
+
 (defun evil-tex-ts--populate-surround-keymap (keymap generator-alist prefix
                                                        single-strings-fn &optional cons-fn)
   "Populate KEYMAP with keys and callbacks from GENERATOR-ALIST.
@@ -1508,24 +1512,67 @@ KEY is a string, VALUE can be:
 
 PREFIX is used to name generated functions.
 Return KEYMAP."
-  (dolist (pair generator-alist)
-    (let ((key (car pair))
-          (val (cdr pair))
-          name)
-      (cond
-       ((stringp val)
-        (setq name (intern (concat prefix val)))
-        (fset name (lambda () (interactive) (funcall single-strings-fn val)))
-        (define-key keymap key name))
-       ((consp val)
-        (setq name (intern (concat prefix (car val))))
-        (if cons-fn
-            (fset name (lambda () (interactive) (funcall cons-fn val)))
-          (fset name (lambda () (interactive) val)))
-        (define-key keymap key name))
-       ((or (functionp val) (not val))
-        (define-key keymap key val)))))
+  (let (replacements)
+    (dolist (pair generator-alist)
+      (let ((key (car pair))
+            (val (cdr pair))
+            name
+            description)
+        (cond
+         ((stringp val)
+          (setq name (intern (concat prefix val)))
+          (setq description val)
+          (fset name (lambda () (interactive) (funcall single-strings-fn val)))
+          (define-key keymap key name)
+          (push (cons key description) replacements))
+         ((consp val)
+          (setq name (intern (concat prefix (car val))))
+          (setq description (car val))
+          (if cons-fn
+              (fset name (lambda () (interactive) (funcall cons-fn val)))
+            (fset name (lambda () (interactive) val)))
+          (define-key keymap key name)
+          (push (cons key description) replacements))
+         ((functionp val)
+          ;; Extract description from function name: evil-tex-ts-envs---+prompt -> +prompt
+          (setq description (if (symbolp val)
+                                (let ((sym-name (symbol-name val)))
+                                  (if (string-match "---\\(.+\\)$" sym-name)
+                                      (match-string 1 sym-name)
+                                    sym-name))
+                              "function"))
+          (define-key keymap key val)
+          (push (cons key description) replacements))
+         ((not val)
+          (define-key keymap key val)))))
+    ;; Store replacements for which-key setup
+    (when replacements
+      (let ((replacement-args (apply #'append
+                                     (mapcar (lambda (pair)
+                                               (list (car pair) (cdr pair)))
+                                             (nreverse replacements)))))
+        (push (cons keymap replacement-args) evil-tex-ts--which-key-replacements)
+        ;; Apply immediately if which-key is already loaded
+        (when (featurep 'which-key)
+          (apply (intern "which-key-add-keymap-based-replacements")
+                 keymap replacement-args)))))
   keymap)
+
+(defvar evil-tex-ts--which-key-setup-done nil
+  "Non-nil if which-key descriptions have been set up.")
+
+(defun evil-tex-ts-setup-which-key ()
+  "Set up which-key descriptions for evil-tex-ts keymaps.
+Call this function after loading which-key if you load evil-tex-ts
+before which-key.  If which-key is already loaded when evil-tex-ts
+loads, this is done automatically."
+  (interactive)
+  (when (and (featurep 'which-key)
+             (not evil-tex-ts--which-key-setup-done))
+    (dolist (entry evil-tex-ts--which-key-replacements)
+      (apply (intern "which-key-add-keymap-based-replacements")
+             (car entry) (cdr entry)))
+    (setq evil-tex-ts--which-key-setup-done t)))
 
 (defun evil-tex-ts--read-with-keymap (keymap)
   "Prompt the user to press a key from KEYMAP.
@@ -1533,6 +1580,8 @@ Return the result of the called function, or error if key not found."
   (let (key map-result)
     (when (and (require 'which-key nil t)
                (fboundp 'which-key--show-keymap))
+      ;; Set up which-key descriptions on first use
+      (evil-tex-ts-setup-which-key)
       (run-with-idle-timer
        which-key-idle-delay nil
        (lambda () (unless key
@@ -1554,20 +1603,22 @@ Return the result of the called function, or error if key not found."
 (defun evil-tex-ts-get-env-for-surrounding (env-name)
   "Format strings for the env named ENV-NAME for surrounding.
 Return a cons of (\"\\begin{ENV-NAME}\" . \"\\end{ENV-NAME}\").
-Respect the value of `evil-tex-ts-include-newlines-in-envs'."
+Respect the value of `evil-tex-ts-include-newlines-in-envs'.
+Note: closing does NOT include leading newline because inner content
+from environment text objects already includes trailing newline."
   (interactive (list (read-from-minibuffer "env: " nil minibuffer-local-ns-map)))
   (cons (format "\\begin{%s}%s"
                 env-name
                 (if evil-tex-ts-include-newlines-in-envs "\n" ""))
-        (format "%s\\end{%s}"
-                (if evil-tex-ts-include-newlines-in-envs "\n" "")
-                env-name)))
+        (format "\\end{%s}" env-name)))
 
 (defun evil-tex-ts--format-env-cons-for-surrounding (env-cons)
   "Format ENV-CONS for surrounding.
-Add newlines if `evil-tex-ts-include-newlines-in-envs' is t."
+Add newline after opening if `evil-tex-ts-include-newlines-in-envs' is t.
+Note: closing does NOT get leading newline because inner content
+from environment text objects already includes trailing newline."
   (if evil-tex-ts-include-newlines-in-envs
-      (cons (concat (car env-cons) "\n") (concat "\n" (cdr env-cons)))
+      (cons (concat (car env-cons) "\n") (cdr env-cons))
     env-cons))
 
 (defun evil-tex-ts--format-accent-for-surrounding (accent)
@@ -1672,9 +1723,12 @@ For environments (?e): line breaks added when surrounding partial lines."
     ;; For environment linewise selection: handle trailing newline and indentation
     (when (and is-env (eq type 'line))
       ;; Linewise selection includes trailing newline as line marker.
-      ;; Remove only ONE trailing newline (the linewise marker), preserving
-      ;; any blank lines that user intentionally selected.
-      (when (and (> end beg) (eq (char-before end) ?\n))
+      ;; Remove it ONLY if it's not a blank line the user selected.
+      ;; (A blank line would have consecutive newlines)
+      (when (and (> end beg)
+                 (eq (char-before end) ?\n)
+                 (not (and (> (1- end) beg)
+                           (eq (char-before (1- end)) ?\n))))
         (setq end (1- end)))
       ;; Use inclusive type to prevent evil-surround from adding extra newlines
       (setq type 'inclusive)
