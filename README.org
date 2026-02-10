@@ -7,8 +7,9 @@
 *Why a new package?*
 The original `evil-tex` has not seen updates in years and relies on regular expressions for text object detection. This approach can be brittle, inaccurate in complex cases, and inefficient on large files. *evil-tex-ts* leverages the structural understanding of the `tree-sitter-latex` parser to provide precise text objects, efficient toggles, and robust surround integration.
 
-*Warning: Initial Release*
-This is an early version of the package. While functional, it may contain bugs. Please report issues on GitHub.
+*This is the first release of the package.* While functional, it may contain bugs or rough edges. If you encounter any issues, please [[https://github.com/Prgebish/evil-tex-ts/issues][report them on GitHub]].
+
+If you find *evil-tex-ts* useful, please consider giving it a star on [[https://github.com/Prgebish/evil-tex-ts][GitHub]] — it helps others discover the project!
 
 * Table of Contents :TOC_3:noexport:
 - [[#showcase][Showcase]]
@@ -369,22 +370,11 @@ When =<new>= or =<type>= opens a keymap (like =e= for environment or =d= for del
 - A generic `tree-sitter-latex` grammar (usually installed via `M-x treesit-install-language-grammar`)
 
 ** Setup
-Since this package is not yet on MELPA, clone the repository and add it to your =load-path=.
 
-*** Basic setup
-#+BEGIN_SRC emacs-lisp
-(add-to-list 'load-path "/path/to/evil-tex-ts")
-(require 'evil-tex-ts)
-
-;; Hook into LaTeX modes
-(add-hook 'latex-ts-mode-hook #'evil-tex-ts-mode)
-(add-hook 'LaTeX-mode-hook #'evil-tex-ts-mode) ;; If using AUCTeX
-#+END_SRC
-
-*** With use-package
+*** From MELPA
 #+BEGIN_SRC emacs-lisp
 (use-package evil-tex-ts
-  :load-path "/path/to/evil-tex-ts"  ; or use :straight, :elpaca, etc.
+  :ensure t
   :after (evil)
   :hook ((LaTeX-mode . evil-tex-ts-mode)
          (latex-mode . evil-tex-ts-mode))
@@ -400,6 +390,20 @@ Since this package is not yet on MELPA, clone the repository and add it to your 
   ;; IMPORTANT: Set preferred inline math format
   ;; 'dollar for $...$ (default), 'paren for \(...\)
   (setq evil-tex-ts-preferred-inline-math 'dollar))
+#+END_SRC
+
+Or install manually with =M-x package-install RET evil-tex-ts RET=.
+
+*** Manual installation
+Clone the repository and add it to your =load-path=:
+
+#+BEGIN_SRC emacs-lisp
+(add-to-list 'load-path "/path/to/evil-tex-ts")
+(require 'evil-tex-ts)
+
+;; Hook into LaTeX modes
+(add-hook 'latex-ts-mode-hook #'evil-tex-ts-mode)
+(add-hook 'LaTeX-mode-hook #'evil-tex-ts-mode) ;; If using AUCTeX
 #+END_SRC
 
 *Important:* The variable ~evil-tex-ts-preferred-inline-math~ controls which format is used when toggling math modes (=mtm=) and surrounding with inline math (=m=). Default value is ='dollar= (=$...$=). Set to ='paren= for =\(...\)=.
